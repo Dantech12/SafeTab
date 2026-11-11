@@ -95,13 +95,17 @@ async function main() {
       console.log("\nOpen this link in your browser and sign in with the Google account that will own the test enterprise:\n");
       console.log(su.json.signupUrl, "\n");
       console.log("Follow Google's steps. At the end Google sends you to a final page (it may look blank or say");
-      console.log("\"not found\" - that is OK). Copy the WHOLE address from the browser's address bar");
-      console.log("(it contains \"enterpriseToken=\") and paste it below.\n");
+      console.log("\"not found\" - that is OK). Paste EITHER the code shown on that page, OR the whole");
+      console.log("address from the browser's address bar (it contains \"enterpriseToken=\").\n");
       for (let attempt = 0; attempt < 3 && !android.json.connected; attempt++) {
-        const pasted = await ask("Paste the address here");
-        const tokenParam = /[?&]enterpriseToken=([^&#\s]+)/.exec(pasted)?.[1];
+        const pasted = await ask("Paste the code or address here");
+        // Accept either the full address (…?enterpriseToken=XYZ) or the bare code that
+        // Google's final page displays ("Please copy this code…").
+        const fromUrl = /[?&]enterpriseToken=([^&#\s]+)/.exec(pasted)?.[1];
+        const bare = /^[A-Za-z0-9_-]{20,500}$/.test(pasted) ? pasted : undefined;
+        const tokenParam = fromUrl ?? bare;
         if (!tokenParam) {
-          console.log("That address has no enterpriseToken in it. Copy the full address from the final page and try again.");
+          console.log("That doesn't look like the code or the address from Google's final page. Try again.");
           continue;
         }
         const done = await api("POST", `/v1/orgs/${orgId}/android/complete`, token, { enterpriseToken: decodeURIComponent(tokenParam) });
