@@ -3,22 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>SafeTab Portal</title>
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="#/">SafeTab</a>
-    <nav id="nav" hidden>
-      <a href="#/">Home</a>
-      <a href="#/privacy">What we collect</a>
-      <a href="#/audit" data-admin-only>Activity log</a>
-      <span class="org" id="org-name"></span>
-      <button class="link" data-action="logout" type="button">Sign out</button>
-    </nav>
-  </header>
-  <div id="flash" role="status" aria-live="polite"></div>
-  <main id="app"><p class="muted">Loading…</p></main>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar" hidden>
+      <a class="brand" href="#/">
+        <span class="brand-mark" data-icon="shield"></span>
+        <span class="brand-name">SafeTab</span>
+      </a>
+      <nav class="side-nav" aria-label="Main">
+        <a href="#/" data-nav="home"><span data-icon="home"></span><span>Home</span></a>
+        <a href="#/privacy" data-nav="privacy"><span data-icon="eye"></span><span>What we collect</span></a>
+        <a href="#/audit" data-nav="audit" data-admin-only><span data-icon="activity"></span><span>Activity log</span></a>
+      </nav>
+      <div class="side-foot">
+        <div class="org-chip"><span class="org-avatar" id="org-avatar"></span><span class="org-name" id="org-name"></span></div>
+        <button class="ghost-btn" data-action="logout" type="button"><span data-icon="logout"></span><span>Sign out</span></button>
+      </div>
+    </aside>
+    <div class="content">
+      <div id="flash" role="status" aria-live="polite"></div>
+      <main id="app"><div class="loader" aria-label="Loading"></div></main>
+    </div>
+  </div>
   <script src="/app.js"></script>
 </body>
 </html>
