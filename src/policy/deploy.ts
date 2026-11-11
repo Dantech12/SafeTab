@@ -40,11 +40,12 @@ export async function deployDevicePolicy(
   if (!dev.amapi_enterprise) throw new Error("organization has no Android enterprise configured");
 
   const { spec, version: specVersion } = await loadSpec(tx, dev.student_id);
-  const inDowntime = isInDowntime(spec, now);
+  const inDowntime = config().COMPANION_APP_ENABLED && isInDowntime(spec, now);
 
   // Until the companion app registers, each push carries a fresh one-time code.
   let registrationCode: string | undefined;
-  if (!dev.token_hash) {
+  const companionEnabled = config().COMPANION_APP_ENABLED;
+  if (companionEnabled && !dev.token_hash) {
     registrationCode = newToken(24);
     await tx.query(
       `INSERT INTO device_credentials (device_id, org_id, registration_code_hash, registration_expires_at)
@@ -60,6 +61,7 @@ export async function deployDevicePolicy(
     ownership: dev.ownership,
     inDowntime,
     companionPackage: config().COMPANION_APP_PACKAGE,
+    companionEnabled,
     apiBaseUrl: config().PUBLIC_BASE_URL,
     registrationCode,
   });

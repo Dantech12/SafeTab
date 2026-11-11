@@ -37,7 +37,7 @@ describe("policy spec", () => {
 });
 
 describe("policy compiler", () => {
-  const base = { ownership: "school_owned" as const, inDowntime: false, companionPackage: "org.example.safetab.student", apiBaseUrl: "https://api.test" };
+  const base = { ownership: "school_owned" as const, inDowntime: false, companionPackage: "org.example.safetab.student", companionEnabled: true, apiBaseUrl: "https://api.test" };
 
   it("always force-installs the transparency companion app and never blocks it", () => {
     const spec = parsePolicySpec({ apps: { mode: "blocklist", packages: ["org.example.safetab.student", "com.game.x"] } });

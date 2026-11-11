@@ -1,12 +1,11 @@
 import type { FastifyInstance } from "fastify";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { q, withTenant } from "../db/pool.js";
+import { q } from "../db/pool.js";
 import { config } from "../config.js";
-import { audit } from "../audit.js";
 import { verifyPaystackSignature } from "../billing/paystack.js";
 import { handlePaystackEvent } from "../billing/service.js";
-import { reconcileDeviceStatus } from "../policy/deploy.js";
+import { applyDeviceReport } from "../mdm/device-reports.js";
 
 const PubSubPush = z.object({
   message: z.object({
@@ -52,23 +51,15 @@ export async function webhookRoutes(app: FastifyInstance) {
         name?: string; enrollmentTokenName?: string; state?: string; appliedPolicyVersion?: string;
         lastStatusReportTime?: string; policyCompliant?: boolean; nonComplianceDetails?: any[];
       };
-      const match = (await q("SELECT device_id, org_id FROM lookup_device_by_mdm($1, $2)", [device.enrollmentTokenName ?? null, device.name ?? null])).rows[0];
-      if (!match) return reply.status(204).send(); // not ours / already deleted
-
-      await withTenant(match.org_id, async (tx) => {
-        if (type === "ENROLLMENT" && device.name) {
-          await tx.query("UPDATE devices SET mdm_device_name = $2, state = 'active' WHERE id = $1 AND state = 'pending_enrollment'", [match.device_id, device.name]);
-          await audit(tx, { actorType: "system", action: "device.enrolled", targetType: "device", targetId: match.device_id });
-        }
-        await reconcileDeviceStatus(tx, match.device_id, {
-          name: device.name ?? "",
-          state: device.state,
-          appliedPolicyVersion: device.appliedPolicyVersion ? Number(device.appliedPolicyVersion) : undefined,
-          lastStatusReportTime: device.lastStatusReportTime,
-          policyCompliant: device.policyCompliant,
-          nonComplianceDetails: device.nonComplianceDetails,
-        }, deps.now());
-      });
+      await applyDeviceReport({
+        name: device.name ?? "",
+        state: device.state,
+        enrollmentTokenName: device.enrollmentTokenName,
+        appliedPolicyVersion: device.appliedPolicyVersion ? Number(device.appliedPolicyVersion) : undefined,
+        lastStatusReportTime: device.lastStatusReportTime,
+        policyCompliant: device.policyCompliant,
+        nonComplianceDetails: device.nonComplianceDetails,
+      }, deps.now());
       return reply.status(204).send();
     });
   });

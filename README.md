@@ -8,6 +8,7 @@ SafeTab is a transparent, privacy-preserving device-management service for schoo
 SafeTab uses only official platform features: Android Enterprise via the Android Management API, and Paystack for billing. It **does not** do covert monitoring. It never collects message content, keystrokes, screenshots, camera or microphone input, location, or browsing history.
 
 ➡️ **Full design and plan:** [`docs/IMPLEMENTATION_GUIDE.md`](docs/IMPLEMENTATION_GUIDE.md)
+➡️ **Enroll a real test tablet from your computer:** [`docs/PILOT_SETUP.md`](docs/PILOT_SETUP.md)
 
 > Pilot backend, **not production-ready**. It still needs real-device validation, a security review, and a privacy/legal review. The open items are listed in the guide.
 

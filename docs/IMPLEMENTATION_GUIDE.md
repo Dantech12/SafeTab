@@ -314,7 +314,7 @@ npm test                          # needs the test DB (see README)
 | 5 | Companion device API, usage ingestion, notice | `src/routes/device-api.ts` | `test/devices.test.ts` | ✅ |
 | 6 | Billing: checkout, verify, webhooks, entitlements | `src/billing/*`, `src/routes/billing.ts` | `test/billing.test.ts` | ✅ (fake Paystack) |
 | 7 | Jobs: downtime scheduler, retention | `src/jobs/*` | `test/devices.test.ts` | ✅ |
-| 8 | **Real AMAPI integration**: Cloud project, enterprise signup callback, Pub/Sub topic + authenticated push subscription, `AmapiProvider` against a test enterprise | `src/mdm/amapi.ts`, new `src/routes/android-signup.ts` | Manual checklist §9 on 2+ physical tablets | ⏳ |
+| 8 | **Real AMAPI integration**: Cloud project, enterprise signup callback, Pub/Sub topic + authenticated push subscription, `AmapiProvider` against a test enterprise | `src/mdm/amapi.ts`, new `src/routes/android-signup.ts` | Manual checklist §9 on 2+ physical tablets | 🟡 signup flow, status polling (no Pub/Sub) and `npm run pilot` built and tested with fakes; real-device run pending (see `docs/PILOT_SETUP.md`) |
 | 9 | Account security: MFA for admins, email verification, password reset, email delivery of invites | new `src/auth/mfa.ts`, mail adapter | Tests + pen-test | ⏳ |
 | 10 | Supervisor web portal (responsive) | separate `portal/` app (e.g. React + Vite) | Usability check with 2 schools and 2 families | ⏳ |
 | 11 | Student companion app (Kotlin) | separate `android/` project | Real-device test; Play publishing as a private app | ⏳ (sample below) |

@@ -9,3 +9,4 @@ process.env.PAYSTACK_PLAN_INDIVIDUAL = "PLN_test_individual";
 process.env.PAYSTACK_PLAN_ORGANIZATION = "PLN_test_organization";
 process.env.BILLING_CURRENCY = "USD";
 process.env.MDM_PROVIDER = "fake";
+process.env.COMPANION_APP_ENABLED = "true";

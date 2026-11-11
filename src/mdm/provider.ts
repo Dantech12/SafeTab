@@ -28,6 +28,12 @@ export interface MdmProvider {
   lockDevice(deviceName: string): Promise<void>;
   /** Removes management (AMAPI devices.delete wipes a fully managed device). */
   deleteDevice(deviceName: string): Promise<void>;
+  /** All devices of an enterprise (used by the status-polling job instead of Pub/Sub). */
+  listDevices(enterprise: string): Promise<MdmDeviceStatus[]>;
+  /** Step 1 of enterprise signup: a Google-hosted URL the org admin opens. */
+  createSignupUrl(callbackUrl: string): Promise<{ name: string; url: string }>;
+  /** Step 2: exchange the token Google appends to the callback for an enterprise. */
+  createEnterprise(signupUrlName: string, enterpriseToken: string, displayName: string): Promise<{ name: string }>;
 }
 
 export const policyIdForDevice = (deviceId: string) => `device-${deviceId}`;

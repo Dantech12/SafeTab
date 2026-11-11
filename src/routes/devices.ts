@@ -8,6 +8,7 @@ import { PLAN_LIMITS } from "../billing/entitlements.js";
 import { deployDevicePolicy } from "../policy/deploy.js";
 import { policyIdForDevice } from "../mdm/provider.js";
 import { requireFullAccess } from "./students.js";
+import { config } from "../config.js";
 
 const Uuid = z.string().uuid();
 const ENROLLMENT_TTL_S = 24 * 3600;
@@ -23,6 +24,8 @@ export async function deviceRoutes(app: FastifyInstance) {
   app.put("/v1/orgs/:orgId/android-enterprise", async (req) => {
     const ctx = await app.userCtx(req);
     requirePerm(ctx, "org.manage");
+    // Production must use the signup flow (routes/android.ts) so the enterprise is verified.
+    if (config().NODE_ENV === "production") throw new HttpError(404, "not_found");
     const body = z.object({ enterpriseName: z.string().regex(/^enterprises\/[A-Za-z0-9_-]+$/) }).parse(req.body);
     return withTenant(ctx.orgId, async (tx) => {
       await tx.query("UPDATE organizations SET amapi_enterprise = $1", [body.enterpriseName]);

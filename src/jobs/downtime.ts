@@ -1,3 +1,4 @@
+import { config } from "../config.js";
 import { q, withTenant } from "../db/pool.js";
 import type { MdmProvider } from "../mdm/provider.js";
 import { deployDevicePolicy, loadSpec } from "../policy/deploy.js";
@@ -16,7 +17,7 @@ export async function runDowntimeTick(mdm: MdmProvider, now: Date): Promise<numb
       const devices = (await tx.query("SELECT id, student_id, in_downtime FROM devices WHERE state = 'active'")).rows;
       for (const d of devices) {
         const { spec } = await loadSpec(tx, d.student_id);
-        const should = isInDowntime(spec, now);
+        const should = config().COMPANION_APP_ENABLED && isInDowntime(spec, now);
         if (should !== d.in_downtime) {
           await deployDevicePolicy(tx, mdm, d.id, should ? "downtime_start" : "downtime_end", now);
           switched++;

@@ -11,6 +11,8 @@ export interface CompileInput {
   ownership: "school_owned" | "family_owned";
   inDowntime: boolean;
   companionPackage: string;
+  /** False until the companion app is published; then transparency/downtime rely on the OS notices only. */
+  companionEnabled: boolean;
   apiBaseUrl: string;
   /** One-time code delivered via managed configuration until the companion app registers. */
   registrationCode?: string | null;
@@ -43,7 +45,7 @@ export function compilePolicy(input: CompileInput): CompileResult {
     },
   };
 
-  const applications: Record<string, unknown>[] = [companion];
+  const applications: Record<string, unknown>[] = input.companionEnabled ? [companion] : [];
   const policy: Record<string, unknown> = {
     applications,
     // Transparency: shown on the device's lock screen / settings by the OS.
@@ -96,7 +98,9 @@ export function compilePolicy(input: CompileInput): CompileResult {
   }
 
   // --- Downtime ------------------------------------------------------------
-  if (spec.downtime.enabled) {
+  if (spec.downtime.enabled && !input.companionEnabled) {
+    controls.push({ control: "downtime", supported: false, note: "Not applied: downtime needs the SafeTab app, which is not enabled yet." });
+  } else if (spec.downtime.enabled) {
     // AMAPI has no native schedule. SafeTab switches the device into a kiosk policy whose
     // only app is the companion app (showing "Downtime until HH:MM") and back again.
     // Requires the device to be online at the window boundary.
@@ -116,7 +120,9 @@ export function compilePolicy(input: CompileInput): CompileResult {
   }
 
   // --- Usage summaries -------------------------------------------------------
-  if (spec.usageSummaries.enabled) {
+  if (spec.usageSummaries.enabled && !input.companionEnabled) {
+    controls.push({ control: "usageSummaries", supported: false, note: "Not collected: needs the SafeTab app, which is not enabled yet." });
+  } else if (spec.usageSummaries.enabled) {
     controls.push({
       control: "usageSummaries",
       supported: true,
