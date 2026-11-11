@@ -89,6 +89,16 @@ async function main() {
   console.log("\n== 3. Connect Android Enterprise ==");
   let android = await api("GET", `/v1/orgs/${orgId}/android`, token);
   if (!android.json.connected) {
+    // A code from an earlier run can still be used: a new signup link would replace it.
+    const existing = await ask("Do you already have a code from Google's final page? Paste it, or press Enter to get a new link", "");
+    if (existing) {
+      const t0 = /[?&]enterpriseToken=([^&#\s]+)/.exec(existing)?.[1] ?? existing;
+      const done = await api("POST", `/v1/orgs/${orgId}/android/complete`, token, { enterpriseToken: decodeURIComponent(t0) });
+      if (done.status === 200) android = { status: 200, json: done.json };
+      else console.log(`That code could not be used (${done.json.error ?? done.status}). Getting a new link instead.\n`);
+    }
+  }
+  if (!android.json.connected) {
     const su = await api("POST", `/v1/orgs/${orgId}/android/signup`, token);
     if (su.status !== 200) throw new Error(`Could not start Android signup: ${JSON.stringify(su.json)}`);
     if (su.json.mode === "manual") {
@@ -110,7 +120,8 @@ async function main() {
         }
         const done = await api("POST", `/v1/orgs/${orgId}/android/complete`, token, { enterpriseToken: decodeURIComponent(tokenParam) });
         if (done.status === 200) android = { status: 200, json: done.json };
-        else throw new Error(`Google did not accept it (${done.json.error ?? done.status}). Run the script again to get a fresh link.`);
+        else if (done.json.error === "google_rejected_token_start_again") throw new Error("Google did not accept that code (it may have expired). Run the script again and press Enter for a fresh link.");
+        else throw new Error(`Could not finish connecting (${done.json.error ?? done.status}). Run the script again.`);
       }
     } else {
       console.log("\nOpen this link in your browser, sign in with the Google account that will own the test enterprise,");

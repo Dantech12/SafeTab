@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { activateSubscription, auth, makeApp, resetDb, signup, type TestCtx } from "./helpers.js";
+import { activateSubscription, auth, makeApp, ownerQuery, resetDb, signup, type TestCtx } from "./helpers.js";
 import { closePool } from "../src/db/pool.js";
 
 // PUBLIC_BASE_URL is http://localhost here (see setup-env), as on an admin's laptop.
@@ -48,7 +48,9 @@ describe("manual Android signup (no https on this machine)", () => {
     expect(r.json().error).toBe("no_pending_signup_start_again");
   });
 
-  it("connects with the token pasted from the address bar, once", async () => {
+  it("connects with the token pasted from the address bar, once, even after the local window", async () => {
+    // Google's pages can take longer than our redirect window; Google decides token validity.
+    await ownerQuery("UPDATE organizations SET amapi_signup_expires_at = now() - interval '1 hour' WHERE id = $1", [admin.orgId]);
     const name = [...t.mdm.signups.keys()].at(-1)!;
     const tokenValue = new URL(t.mdm.completeSignup(name)).searchParams.get("enterpriseToken")!;
     const r = await t.app.inject({ method: "POST", url: url(admin.orgId, "/android/complete"), headers: auth(admin.token), payload: { enterpriseToken: tokenValue } });

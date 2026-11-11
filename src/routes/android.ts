@@ -7,7 +7,8 @@ import { config } from "../config.js";
 import { HttpError } from "../lib/errors.js";
 import { hashToken, newToken } from "../lib/tokens.js";
 
-const SIGNUP_TTL_MS = 60 * 60_000;
+// Applies to the unauthenticated browser-redirect callback (state value).
+const SIGNUP_TTL_MS = 24 * 60 * 60_000;
 
 const page = (title: string, body: string) =>
   `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
@@ -59,9 +60,11 @@ export async function androidRoutes(app: FastifyInstance) {
     const body = z.object({ enterpriseToken: z.string().trim().min(1).max(500) }).parse(req.body);
     return withTenant(ctx.orgId, async (tx) => {
       const org = (await tx.query(
-        "SELECT name, amapi_enterprise, amapi_signup_url_name, amapi_signup_expires_at FROM organizations FOR UPDATE")).rows[0];
+        "SELECT name, amapi_enterprise, amapi_signup_url_name FROM organizations FOR UPDATE")).rows[0];
       if (org.amapi_enterprise) throw new HttpError(409, "android_already_connected");
-      if (!org.amapi_signup_url_name || !(new Date(org.amapi_signup_expires_at) > new Date())) {
+      // No local expiry here: Google's pages can take a while, the caller is an authenticated
+      // org admin, and Google itself rejects stale or invalid tokens.
+      if (!org.amapi_signup_url_name) {
         throw new HttpError(400, "no_pending_signup_start_again");
       }
       let ent: { name: string };
