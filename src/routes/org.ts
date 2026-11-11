@@ -66,18 +66,26 @@ export async function orgRoutes(app: FastifyInstance) {
   app.post("/v1/orgs/:orgId/invitations", async (req, reply) => {
     const ctx = await app.userCtx(req);
     requirePerm(ctx, "org.manage");
-    const body = z.object({ email: z.string().email().max(254), role: z.enum(["org_admin", "supervisor"]) }).parse(req.body);
+    const body = z.object({
+      email: z.string().email().max(254),
+      role: z.enum(["org_admin", "supervisor", "guardian"]),
+      // Required for guardians: the one child this parent may see and consent for.
+      studentId: Uuid.optional(),
+    }).refine((b) => (b.role === "guardian") === !!b.studentId, "studentId is required for guardians (only)").parse(req.body);
     const token = newToken();
     return withTenant(ctx.orgId, async (tx) => {
+      if (body.studentId && !(await tx.query("SELECT 1 FROM students WHERE id = $1", [body.studentId])).rowCount) {
+        throw new HttpError(400, "unknown_student");
+      }
       const r = await tx.query(
-        `INSERT INTO invitations (org_id, email, role, token_hash, invited_by, expires_at)
-         VALUES (app_current_org(), $1, $2, $3, $4, $5) RETURNING id, expires_at`,
-        [body.email, body.role, hashToken(token), ctx.userId, new Date(Date.now() + INVITE_TTL_MS)],
+        `INSERT INTO invitations (org_id, email, role, token_hash, invited_by, expires_at, student_id)
+         VALUES (app_current_org(), $1, $2, $3, $4, $5, $6) RETURNING id, expires_at`,
+        [body.email, body.role, hashToken(token), ctx.userId, new Date(Date.now() + INVITE_TTL_MS), body.studentId ?? null],
       );
-      await audit(tx, { actorType: "user", actorId: ctx.userId, action: "invitation.created", targetType: "invitation", targetId: r.rows[0].id, metadata: { role: body.role }, ip: ctx.ip });
+      await audit(tx, { actorType: "user", actorId: ctx.userId, action: "invitation.created", targetType: "invitation", targetId: r.rows[0].id, metadata: { role: body.role, studentId: body.studentId ?? null }, ip: ctx.ip });
       // In production the link is emailed to the invitee only and NOT returned to the
       // inviter. Returned here so the flow is testable before email delivery exists.
-      const acceptUrl = `${config().PUBLIC_BASE_URL}/invite#${token}`;
+      const acceptUrl = `${config().PUBLIC_BASE_URL}/#/invite/${token}`;
       return reply.status(201).send({ id: r.rows[0].id, expiresAt: r.rows[0].expires_at, ...(config().NODE_ENV !== "production" ? { acceptUrl, token } : {}) });
     });
   });

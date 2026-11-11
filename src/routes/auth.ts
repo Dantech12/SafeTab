@@ -101,10 +101,13 @@ export async function authRoutes(app: FastifyInstance) {
     if (!inv) throw new HttpError(400, "invalid_or_expired_invitation");
 
     return withTenant(inv.org_id, async (tx) => {
-      const invitation = (await tx.query("SELECT email, role FROM invitations WHERE id = $1 FOR UPDATE", [inv.id])).rows[0];
-      const sub = (await tx.query("SELECT plan FROM subscriptions")).rows[0];
-      const members = Number((await tx.query("SELECT count(*) FROM memberships")).rows[0].count);
-      if (members >= PLAN_LIMITS[sub.plan as "individual" | "organization"].members) throw new HttpError(402, "member_limit_reached");
+      const invitation = (await tx.query("SELECT email, role, student_id FROM invitations WHERE id = $1 FOR UPDATE", [inv.id])).rows[0];
+      if (invitation.role !== "guardian") {
+        // Parents don't count toward the staff seat limit.
+        const sub = (await tx.query("SELECT plan FROM subscriptions")).rows[0];
+        const members = Number((await tx.query("SELECT count(*) FROM memberships WHERE role <> 'guardian'")).rows[0].count);
+        if (members >= PLAN_LIMITS[sub.plan as "individual" | "organization"].members) throw new HttpError(402, "member_limit_reached");
+      }
 
       let userId: string;
       const authHeader = req.headers.authorization;
@@ -121,7 +124,22 @@ export async function authRoutes(app: FastifyInstance) {
           [invitation.email, await hashPassword(body.password), body.displayName]);
         userId = created.rows[0].id;
       }
-      await tx.query("INSERT INTO memberships (org_id, user_id, role) VALUES (app_current_org(), $1, $2) ON CONFLICT DO NOTHING", [userId, invitation.role]);
+      const existing = (await tx.query("SELECT role FROM memberships WHERE user_id = $1", [userId])).rows[0];
+      if (existing && existing.role !== "guardian" && invitation.role === "guardian") {
+        throw new HttpError(409, "staff_account_cannot_be_guardian_use_another_email");
+      }
+      if (!existing) {
+        await tx.query("INSERT INTO memberships (org_id, user_id, role) VALUES (app_current_org(), $1, $2)", [userId, invitation.role]);
+      } else if (existing.role === "guardian" && invitation.role !== "guardian") {
+        // A parent who is also invited as staff becomes staff (the inviter chose this).
+        await tx.query("UPDATE memberships SET role = $2 WHERE user_id = $1", [userId, invitation.role]);
+      }
+      if (invitation.student_id) {
+        // A parent with two children at the school accepts one invitation per child.
+        await tx.query(
+          "INSERT INTO supervisor_assignments (org_id, user_id, student_id) VALUES (app_current_org(), $1, $2) ON CONFLICT DO NOTHING",
+          [userId, invitation.student_id]);
+      }
       await tx.query("UPDATE invitations SET accepted_at = now() WHERE id = $1", [inv.id]);
       await audit(tx, { actorType: "user", actorId: userId, action: "member.joined", targetType: "user", targetId: userId, metadata: { role: invitation.role }, ip: req.ip });
       const token = authHeader ? undefined : await issueSession(userId);

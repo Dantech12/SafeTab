@@ -10,6 +10,7 @@ const flashEl = document.getElementById("flash");
 const ICONS = {
   shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
   eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
   activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
@@ -71,7 +72,14 @@ const ERRORS = {
   no_pending_signup_start_again: "Start the Google signup first (click “Open Google signup”).",
   mdm_policy_push_failed: "Google could not receive the device settings. Check the server window for details.",
   retire_devices_first: "Retire this student's tablets first.",
-  invalid_or_expired_invitation: "This invitation link is invalid or expired.",
+  invalid_or_expired_invitation: "This invitation link is invalid, already used, or expired. Ask the school for a new one.",
+  parent_consent_required: "This is a parent-owned tablet. A parent must first agree to the school-hours rules in SafeTab (see “Parents & consent”).",
+  invitation_email_mismatch: "You're signed in with a different email from the one that was invited. Sign out and use the invited email.",
+  sign_in_to_accept: "You already have a SafeTab account with this email. Use “I already have an account” below.",
+  staff_account_cannot_be_guardian_use_another_email: "This email belongs to a staff account. Use a different email for the parent account.",
+  no_school_hours_rules_to_consent_to: "The school hasn't set school-hours rules yet, so there is nothing to agree to.",
+  no_active_consent: "There is no active consent to withdraw.",
+  member_limit_reached: "This organization has reached its staff limit.",
 };
 
 let flashTimer;
@@ -206,8 +214,27 @@ const stat = (iconName, tone, value, label) => `
   <div class="stat"><span class="icon-tile ${tone}">${icon(iconName)}</span>
     <div><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div></div>`;
 
+async function viewGuardianHome() {
+  const students = (await api("GET", orgPath("/students"))).students;
+  const consents = await Promise.all(students.map((s) => api("GET", orgPath(`/students/${s.id}/consent`))));
+  const first = (state.me?.user?.display_name || "").split(" ")[0];
+  app.innerHTML = `
+    <section class="hero">
+      <div class="eyebrow">Parent view · ${h(state.org.name)}</div>
+      <h1>${first ? `Hello, ${h(first)}` : "Hello"}</h1>
+      <p>See the school-hours rules for your child's tablet, and choose whether to agree. You can change your mind at any time.</p>
+    </section>
+    <section class="card">
+      ${section("users", students.length === 1 ? "Your child" : "Your children")}
+      ${students.length ? `<div class="tiles">${students.map((s, i) => `<a class="tile" href="#/student/${h(s.id)}">${avatar(s.display_name, s.id)}
+        <div class="grow"><div class="name">${h(s.display_name)}</div><div style="margin-top:4px">${consentBadge(consents[i].status)}</div></div>${icon("chevron")}</a>`).join("")}</div>`
+        : `<p class="muted">No child is linked to your account yet.</p>`}
+    </section>`;
+}
+
 async function viewHome() {
   setActiveNav("home");
+  if (isGuardian()) return viewGuardianHome();
   const [students, android, billing, devices] = await Promise.all([
     api("GET", orgPath("/students")),
     api("GET", orgPath("/android")),
@@ -336,18 +363,69 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 const section = (iconName, title, sub = "") => `<div class="card-head"><span class="icon-tile">${icon(iconName)}</span><h2>${title}</h2>${sub ? `<span class="sub muted small">${sub}</span>` : ""}</div>`;
 
+const isGuardian = () => state.org?.myRole === "guardian";
+const isSchool = () => state.org?.kind === "school";
+const APP_NAMES = Object.fromEntries(COMMON_APPS.map(([n, p]) => [p, n]));
+const appName = (pkg) => APP_NAMES[pkg] || pkg;
+
+const CONSENT_BADGE = {
+  none: ["warn", "No parent consent yet"],
+  active: ["ok", "Parent consent given"],
+  needs_reconsent: ["warn", "Rules changed · waiting for parent"],
+  withdrawn: ["bad", "Consent withdrawn"],
+};
+const consentBadge = (s) => { const [cls, t] = CONSENT_BADGE[s] || ["", s]; return `<span class="badge ${cls}">${h(t)}</span>`; };
+
+function scheduleText(sh) {
+  if (!sh.windows.length) return "No times set";
+  return sh.windows.map((w) => {
+    const d = [...w.days].sort();
+    const contiguous = d.every((x, i) => i === 0 || x === d[i - 1] + 1);
+    const days = d.length > 2 && contiguous ? `${DAYS[d[0] - 1]}–${DAYS[d[d.length - 1] - 1]}` : d.map((x) => DAYS[x - 1]).join(", ");
+    return `${days} · ${w.start}–${w.end}`;
+  }).join("; ");
+}
+
+function deviceList(devices, rolloutById, withActions) {
+  if (!devices.length) return `<p class="muted">No tablets yet.</p>`;
+  return devices.map((d) => {
+    const r = rolloutById[d.id];
+    return `<div class="device">
+      <span class="icon-tile ${d.state === "active" ? "ok" : d.state === "lost" ? "bad" : "warn"}">${icon("tablet")}</span>
+      <div class="meta">
+        <div style="font-weight:650">${h(d.label || "Tablet")} <span class="muted small">· ${d.ownership === "family_owned" ? "parent-owned" : "school-owned"}</span></div>
+        <div class="row" style="margin-top:6px">${deviceBadge(d.state)} ${r ? rolloutBadge(r.status) : ""}</div>
+        ${r?.nonCompliance?.length ? `<div class="small muted" style="margin-top:6px">${r.nonCompliance.map((n) => h(`${n.settingName || n.packageName || ""} ${n.nonComplianceReason || ""}`)).join("<br>")}</div>` : ""}
+        <div class="small muted" style="margin-top:6px">Last report: ${h(fmtDate(d.last_status_at))}</div>
+      </div>
+      ${withActions ? `<div class="actions">
+        <button type="button" class="secondary icon-only" title="Mark lost (locks the tablet)" aria-label="Mark lost" data-lost="${h(d.id)}">${icon("lock")}</button>
+        <button type="button" class="danger icon-only" title="Retire (erases the tablet)" aria-label="Retire" data-retire="${h(d.id)}">${icon("trash")}</button>
+      </div>` : ""}
+    </div>`;
+  }).join("");
+}
+
 async function viewStudent(studentId) {
   setActiveNav("home");
-  const [student, policy] = await Promise.all([
+  const [student, policy, consent] = await Promise.all([
     api("GET", orgPath(`/students/${studentId}`)),
     api("GET", orgPath(`/students/${studentId}/policy`)),
+    api("GET", orgPath(`/students/${studentId}/consent`)),
   ]);
+  if (isGuardian()) return renderGuardianStudent(studentId, student, policy, consent);
+
   const spec = policy.spec;
   const companionOff = !state.org.companionAppEnabled;
   const devices = student.devices.filter((d) => d.state !== "retired");
+  const familyDevices = devices.filter((d) => d.ownership === "family_owned");
   const rolloutById = Object.fromEntries(policy.rollout.map((r) => [r.deviceId, r]));
-  const tz = spec.downtime.timezone !== "UTC" ? spec.downtime.timezone : (Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const tz = spec.downtime.timezone !== "UTC" ? spec.downtime.timezone : localTz;
+  const shTz = spec.schoolHours.timezone !== "UTC" ? spec.schoolHours.timezone : localTz;
   const win = spec.downtime.windows[0] || { days: [1, 2, 3, 4, 5], start: "21:00", end: "06:30" };
+  const shWin = spec.schoolHours.windows[0] || { days: [1, 2, 3, 4, 5], start: "07:30", end: "15:00" };
+  const schoolOnly = isSchool() ? "school-owned tablets only" : "";
 
   app.innerHTML = `
     <p><a href="#/" class="small">${icon("back")} All students</a></p>
@@ -356,33 +434,46 @@ async function viewStudent(studentId) {
 
     <section class="card">
       ${section("tablet", "Tablets", "reports every few minutes")}
-      ${devices.length ? devices.map((d) => {
-        const r = rolloutById[d.id];
-        return `<div class="device">
-          <span class="icon-tile ${d.state === "active" ? "ok" : d.state === "lost" ? "bad" : "warn"}">${icon("tablet")}</span>
-          <div class="meta">
-            <div style="font-weight:650">${h(d.label || "Tablet")}</div>
-            <div class="row" style="margin-top:6px">${deviceBadge(d.state)} ${r ? rolloutBadge(r.status) : ""}</div>
-            ${r?.nonCompliance?.length ? `<div class="small muted" style="margin-top:6px">${r.nonCompliance.map((n) => h(`${n.settingName || n.packageName || ""} ${n.nonComplianceReason || ""}`)).join("<br>")}</div>` : ""}
-            <div class="small muted" style="margin-top:6px">Last report: ${h(fmtDate(d.last_status_at))}</div>
-          </div>
-          ${isAdmin() ? `<div class="actions">
-            <button type="button" class="secondary icon-only" title="Mark lost (locks the tablet)" aria-label="Mark lost" data-lost="${h(d.id)}">${icon("lock")}</button>
-            <button type="button" class="danger icon-only" title="Retire (erases the tablet)" aria-label="Retire" data-retire="${h(d.id)}">${icon("trash")}</button>
-          </div>` : ""}
-        </div>`;
-      }).join("") : `<p class="muted">No tablets yet.</p>`}
+      ${deviceList(devices, rolloutById, isAdmin())}
       ${devices.some((d) => rolloutById[d.id]?.status === "pending") ? `<div class="notice info">${icon("info")}<span>“Rules pending” means the change was sent and SafeTab is waiting for the tablet to confirm it.</span></div>` : ""}
+      ${consent.status === "withdrawn" && familyDevices.length ? `<div class="notice">${icon("alert")}<span>The parent withdrew consent, so school-hours rules have stopped. Retire the parent-owned tablet (${icon("trash")}) to release it — this resets it, so let the family back it up first.</span></div>` : ""}
       ${isAdmin() ? `<div class="row">
-        <input type="text" id="dev-label" class="grow" placeholder="Tablet name, e.g. Tablet 1" maxlength="80">
-        <select id="dev-own" style="width:auto"><option value="school_owned">School-owned</option><option value="family_owned">Family-owned</option></select>
+        <input type="text" id="dev-label" class="grow" placeholder="Tablet name, e.g. Esi's tablet" maxlength="80">
+        <select id="dev-own" style="width:auto">${isSchool()
+          ? `<option value="family_owned">Parent-owned (needs consent)</option><option value="school_owned">School-owned</option>`
+          : `<option value="family_owned">Our family's tablet</option>`}</select>
         <button type="button" data-action="add-device">${icon("qr")} Add a tablet</button></div>` : ""}
       <div id="qr-panel"></div>
     </section>
 
+    ${isSchool() ? `<section class="card">
+      ${section("users", "Parents & consent", "")}
+      <div class="row" style="margin-top:0">${consentBadge(consent.status)}
+        ${consent.consent ? `<span class="muted small">${h(consent.consent.signatureName)} · ${consent.status === "withdrawn" ? `withdrawn ${h(fmtDate(consent.consent.withdrawnAt))}` : `agreed ${h(fmtDate(consent.consent.grantedAt))}`}</span>` : ""}</div>
+      <p class="muted small">Parent-owned tablets get <strong>only</strong> the school-hours rules below, and only after a parent agrees to them in their own SafeTab login. Staff can't agree on a parent's behalf.</p>
+      ${consent.guardians.length ? `<div class="tiles" style="margin-top:8px">${consent.guardians.map((g) => `<div class="tile">${avatar(g.display_name, g.email)}<div class="grow"><div class="name">${h(g.display_name)}</div><div class="muted small">${h(g.email)}</div></div></div>`).join("")}</div>` : `<p class="muted">No parent linked yet.</p>`}
+      ${isAdmin() ? `<form id="invite-parent" class="row">
+        <input type="email" id="parent-email" class="grow" placeholder="Parent's email address" required>
+        <button type="submit" class="secondary">${icon("plus")} Invite parent</button>
+      </form><div id="invite-result"></div>` : ""}
+    </section>` : ""}
+
     <form id="policy">
+      ${isSchool() ? `<section class="card">
+        ${section("clock", "School hours", h(shTz))}
+        <p class="muted small" style="margin-top:0">Apps switched off during these hours only — not deleted. These are the only rules that apply to parent-owned tablets. Changing them asks parents to agree again.</p>
+        <label class="switch"><input type="checkbox" id="sh-on" ${spec.schoolHours.enabled ? "checked" : ""}> Switch off apps during school hours</label>
+        <div class="days">${DAYS.map((d, i) => `<label><input type="checkbox" data-sday="${i + 1}" ${shWin.days.includes(i + 1) ? "checked" : ""}><span>${d}</span></label>`).join("")}</div>
+        <div class="row">
+          <label style="margin:0">From <input type="time" id="sh-start" value="${h(shWin.start)}" style="width:auto;margin-left:6px"></label>
+          <label style="margin:0">until <input type="time" id="sh-end" value="${h(shWin.end)}" style="width:auto;margin-left:6px"></label>
+        </div>
+        <textarea id="sh-apps" style="margin-top:12px" aria-label="Apps to switch off, one per line" placeholder="One app ID per line, e.g. com.zhiliaoapp.musically">${h(spec.schoolHours.blockedApps.join("\n"))}</textarea>
+        <div class="row" style="margin-top:10px">${COMMON_APPS.map(([n, p]) => `<button type="button" class="chip" data-addsh="${h(p)}">${icon("plus")} ${h(n)}</button>`).join("")}</div>
+      </section>` : ""}
+
       <section class="card">
-        ${section("ban", "Apps")}
+        ${section("ban", "Apps", schoolOnly)}
         <div class="segmented" role="radiogroup" aria-label="App rule">
           <label><input type="radio" name="apps-mode" value="blocklist" ${spec.apps.mode === "blocklist" ? "checked" : ""}><span>Block listed apps</span></label>
           <label><input type="radio" name="apps-mode" value="allowlist" ${spec.apps.mode === "allowlist" ? "checked" : ""}><span>Allow only listed apps</span></label>
@@ -393,17 +484,16 @@ async function viewStudent(studentId) {
       </section>
 
       <section class="card">
-        ${section("globe", "Websites", "Chrome only")}
+        ${section("globe", "Websites", isSchool() ? "Chrome · school-owned tablets only" : "Chrome only")}
         <div class="segmented" role="radiogroup" aria-label="Website rule">
           ${[["off", "No rules"], ["blocklist", "Block listed sites"], ["allowlist", "Allow only listed sites"]].map(([v, t]) =>
             `<label><input type="radio" name="web-mode" value="${v}" ${spec.web.mode === v ? "checked" : ""}><span>${t}</span></label>`).join("")}
         </div>
         <textarea id="domains" style="margin-top:12px" aria-label="Website domains, one per line" placeholder="One domain per line, e.g. example.com or *.example.com">${h(spec.web.domains.join("\n"))}</textarea>
-        <p class="muted small">Applies to Chrome. To stop other browsers being installed, use “Allow only listed apps”.</p>
       </section>
 
       <section class="card">
-        ${section("moon", "Downtime", h(tz))}
+        ${section("moon", "Downtime", isSchool() ? `${h(tz)} · school-owned tablets only` : h(tz))}
         ${companionOff ? `<div class="notice">${icon("info")}<span>Downtime needs the SafeTab student app, which isn't available yet. You can set it now — it takes effect once the app is enabled.</span></div>` : ""}
         <label class="switch"><input type="checkbox" id="dt-on" ${spec.downtime.enabled ? "checked" : ""}> Turn on downtime</label>
         <div class="days">${DAYS.map((d, i) => `<label><input type="checkbox" data-day="${i + 1}" ${win.days.includes(i + 1) ? "checked" : ""}><span>${d}</span></label>`).join("")}</div>
@@ -414,25 +504,26 @@ async function viewStudent(studentId) {
       </section>
 
       <section class="card">
-        ${section("chart", "Screen-time summary")}
+        ${section("chart", "Screen-time summary", schoolOnly)}
         ${companionOff ? `<div class="notice">${icon("info")}<span>Also needs the SafeTab student app. Nothing is collected until then.</span></div>` : ""}
         <label class="switch"><input type="checkbox" id="usage-on" ${spec.usageSummaries.enabled ? "checked" : ""}>
           <span>Collect daily minutes per app <span class="hint muted small">· never messages, screens or browsing history</span></span></label>
       </section>
 
       <div class="savebar">
-        <span class="muted small">${icon("shield")} Rules version ${h(policy.version)} · changes apply to all of ${h(student.display_name)}'s tablets</span>
+        <span class="muted small">${icon("shield")} Rules version ${h(policy.version)}</span>
         <button type="submit">${icon("save")} Save rules</button>
       </div>
     </form>`;
 
-  on("[data-addapp]", "click", (e) => {
-    const ta = app.querySelector("#apps");
+  const addTo = (sel, pkg) => {
+    const ta = app.querySelector(sel);
     const list = ta.value.split(/\s+/).filter(Boolean);
-    const pkg = e.currentTarget.dataset.addapp;
     if (!list.includes(pkg)) list.push(pkg);
     ta.value = list.join("\n");
-  });
+  };
+  on("[data-addapp]", "click", (e) => addTo("#apps", e.currentTarget.dataset.addapp));
+  on("[data-addsh]", "click", (e) => addTo("#sh-apps", e.currentTarget.dataset.addsh));
   on("[data-action=add-device]", "click", (e) => busy(e.currentTarget, async () => {
     const r = await api("POST", orgPath(`/students/${studentId}/devices`), { ownership: val("#dev-own"), label: val("#dev-label") || undefined });
     showQr(r);
@@ -449,6 +540,18 @@ async function viewStudent(studentId) {
     flash("Tablet retired.", "success");
     await route();
   }); });
+  on("#invite-parent", "submit", (e) => {
+    e.preventDefault();
+    busy(e.submitter, async () => {
+      const r = await api("POST", orgPath("/invitations"), { email: val("#parent-email"), role: "guardian", studentId });
+      const box = app.querySelector("#invite-result");
+      box.innerHTML = r.acceptUrl
+        ? `<div class="notice info">${icon("link")}<span>Send this link to the parent (email or WhatsApp). It works once, for 3 days, and only for that email address:<br>
+            <input type="text" readonly value="${h(r.acceptUrl)}" style="margin-top:8px" aria-label="Invitation link"></span></div>`
+        : `<div class="notice info">${icon("check")}<span>Invitation created.</span></div>`;
+      box.querySelector("input")?.select();
+    });
+  });
   on("#policy", "submit", (e) => {
     e.preventDefault();
     busy(e.submitter, async () => {
@@ -462,12 +565,81 @@ async function viewStudent(studentId) {
           windows: days.length ? [{ days, start: val("#dt-start"), end: val("#dt-end") }] : [],
         },
         usageSummaries: { enabled: app.querySelector("#usage-on").checked },
+        schoolHours: spec.schoolHours,
       };
+      if (app.querySelector("#sh-on")) {
+        const sdays = [...app.querySelectorAll("[data-sday]")].filter((c) => c.checked).map((c) => Number(c.dataset.sday));
+        newSpec.schoolHours = {
+          enabled: app.querySelector("#sh-on").checked, timezone: shTz,
+          windows: sdays.length ? [{ days: sdays, start: val("#sh-start"), end: val("#sh-end") }] : [],
+          blockedApps: lines("#sh-apps"),
+        };
+      }
       const r = await api("PUT", orgPath(`/students/${studentId}/policy`), { spec: newSpec, expectedVersion: policy.version });
       flash(r.deployments.length ? "Saved and sent. Each tablet shows “Rules pending” until it confirms." : "Saved. Rules will be sent when a tablet is added.", "success");
       await route();
     });
   });
+}
+
+function renderGuardianStudent(studentId, student, policy, consent) {
+  const sh = policy.spec.schoolHours;
+  const devices = student.devices.filter((d) => d.state !== "retired");
+  const rolloutById = Object.fromEntries(policy.rollout.map((r) => [r.deviceId, r]));
+  const canAgree = consent.hasRules && consent.status !== "active";
+
+  app.innerHTML = `
+    <p><a href="#/" class="small">${icon("back")} Home</a></p>
+    <div class="page-head">${avatar(student.display_name, student.id, "lg")}
+      <div><h1>${h(student.display_name)}</h1><p class="muted">${h(state.org.name)}</p></div></div>
+
+    <section class="card">
+      ${section("clock", "School-hours rules", consent.hasRules ? h(sh.timezone) : "")}
+      ${consent.hasRules ? `
+        <p style="margin-top:0"><strong>${h(scheduleText(sh))}</strong></p>
+        <p class="muted small">During these hours these apps are switched off (not deleted):</p>
+        <div class="row" style="margin-top:6px">${sh.blockedApps.map((p) => `<span class="badge">${h(appName(p))}</span>`).join("")}</div>
+        <p class="muted small">Outside these hours the school does not restrict the tablet. The school can't see messages, photos, files, screens, location, browsing history or which apps are used.</p>`
+        : `<p class="muted">The school hasn't set any school-hours rules yet, so there is nothing to agree to.</p>`}
+    </section>
+
+    <section class="card">
+      ${section("shield", "Your consent")}
+      <div class="row" style="margin-top:0">${consentBadge(consent.status)}
+        ${consent.consent && consent.status !== "none" ? `<span class="muted small">${h(consent.consent.signatureName)} · ${consent.status === "withdrawn" ? `withdrawn ${h(fmtDate(consent.consent.withdrawnAt))}` : `agreed ${h(fmtDate(consent.consent.grantedAt))}`}</span>` : ""}</div>
+      ${consent.status === "needs_reconsent" ? `<div class="notice">${icon("alert")}<span>The school changed the rules. They are <strong>not</strong> applied to the tablet until you agree to the new version below.</span></div>` : ""}
+      ${consent.consentText ? `<div class="consent-text">${h(consent.consentText)}</div>` : ""}
+      ${canAgree ? `<form id="consent-form">
+        <label for="sig">Type your full name to sign</label>
+        <input type="text" id="sig" required minlength="2" maxlength="120" autocomplete="name">
+        <label class="switch"><input type="checkbox" id="agree" required> <span>I have read this and I agree</span></label>
+        <div class="row"><button type="submit">${icon("check")} I agree</button></div>
+      </form>` : ""}
+      ${consent.status === "active" ? `<div class="row"><button type="button" class="danger" data-action="withdraw">${icon("ban")} Withdraw consent</button>
+        <span class="muted small">The school-hours rules stop straight away.</span></div>` : ""}
+    </section>
+
+    <section class="card">
+      ${section("tablet", "Tablet")}
+      ${deviceList(devices, rolloutById, false)}
+      <p class="muted small">After you agree, the school enrolls the tablet. This needs a <strong>one-time reset</strong>, so back up photos and files first. While enrolled, the tablet shows that it is managed.</p>
+    </section>`;
+
+  on("#consent-form", "submit", (e) => {
+    e.preventDefault();
+    busy(e.submitter, async () => {
+      if (!app.querySelector("#agree").checked) throw new Error("Please tick “I have read this and I agree”.");
+      await api("POST", orgPath(`/students/${studentId}/consent`), { signatureName: val("#sig"), agree: true });
+      flash("Thank you — your consent is recorded.", "success");
+      await route();
+    });
+  });
+  on("[data-action=withdraw]", "click", (e) => busy(e.currentTarget, async () => {
+    if (!confirm("Withdraw consent? The school-hours rules stop straight away. To remove management completely, the school resets the tablet.")) return;
+    await api("POST", orgPath(`/students/${studentId}/consent/withdraw`));
+    flash("Consent withdrawn. The school-hours rules have stopped.", "success");
+    await route();
+  }));
 }
 
 function showQr(r) {
@@ -529,12 +701,77 @@ async function viewPrivacy() {
       <ul class="nope">${r.notCollected.map((n) => `<li>${icon("check")}<span>${h(n[0].toUpperCase() + n.slice(1))}</span></li>`).join("")}</ul></section>`;
 }
 
+function viewInvite(inviteToken) {
+  sidebar.hidden = true;
+  const signedIn = !!store.get("st_token");
+  app.innerHTML = `
+    <div class="auth-wrap"><div class="auth">
+      <div class="brand"><span class="brand-mark">${icon("shield")}</span><span>SafeTab</span></div>
+      <div class="card">
+        <h2 style="margin-bottom:6px">You've been invited</h2>
+        <p class="muted small" style="margin-top:0">Accept to see your child's school-hours rules and choose whether to agree. Nothing changes on the tablet until you agree.</p>
+        ${signedIn ? `<div class="row"><button type="button" class="full" data-action="accept-signed-in">${icon("check")} Accept invitation</button></div>` : `
+        <div class="tabs" role="tablist">
+          <button type="button" role="tab" aria-selected="true" data-tab="new">Create my account</button>
+          <button type="button" role="tab" aria-selected="false" data-tab="existing">I already have an account</button>
+        </div>
+        <form id="inv-new">
+          <label for="inv-name">Your full name</label><input id="inv-name" type="text" autocomplete="name" required maxlength="120">
+          <label for="inv-pw">Choose a password <span class="muted small">· at least 12 characters</span></label>
+          <input id="inv-pw" type="password" autocomplete="new-password" minlength="12" required>
+          <p class="muted small">Your account uses the email address the invitation was sent to.</p>
+          <div class="row"><button type="submit" class="full">Create account & accept</button></div>
+        </form>
+        <form id="inv-existing" hidden>
+          <label for="inv-email">Email</label><input id="inv-email" type="email" autocomplete="username" required>
+          <label for="inv-pw2">Password</label><input id="inv-pw2" type="password" autocomplete="current-password" required>
+          <div class="row"><button type="submit" class="full">Sign in & accept</button></div>
+        </form>`}
+      </div>
+    </div></div>`;
+
+  const finish = async (r) => {
+    if (r.token) store.set("st_token", r.token);
+    store.set("st_org", r.orgId);
+    state.org = null;
+    flash("Invitation accepted.", "success");
+    location.hash = "#/";
+  };
+  const acceptWithSession = async () => {
+    state.token = store.get("st_token");
+    await finish(await api("POST", "/v1/invitations/accept", { token: inviteToken }));
+  };
+  app.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => {
+    app.querySelectorAll("[data-tab]").forEach((x) => x.setAttribute("aria-selected", String(x === b)));
+    app.querySelector("#inv-new").hidden = b.dataset.tab !== "new";
+    app.querySelector("#inv-existing").hidden = b.dataset.tab !== "existing";
+  }));
+  on("[data-action=accept-signed-in]", "click", (e) => busy(e.currentTarget, acceptWithSession));
+  on("#inv-new", "submit", (e) => {
+    e.preventDefault();
+    busy(e.submitter, async () => {
+      state.token = null;
+      await finish(await api("POST", "/v1/invitations/accept", { token: inviteToken, displayName: val("#inv-name"), password: val("#inv-pw") }));
+    });
+  });
+  on("#inv-existing", "submit", (e) => {
+    e.preventDefault();
+    busy(e.submitter, async () => {
+      const r = await api("POST", "/v1/auth/login", { email: val("#inv-email"), password: val("#inv-pw2") });
+      store.set("st_token", r.token);
+      await acceptWithSession();
+    });
+  });
+}
+
 // ---------- router ----------
 function on(sel, evt, fn) { app.querySelectorAll(sel).forEach((el) => el.addEventListener(evt, fn)); }
 
 async function route() {
   const hash = location.hash || "#/";
   if (hash === "#/login") return viewLogin();
+  const invite = /^#\/invite\/([A-Za-z0-9_-]{20,200})$/.exec(hash);
+  if (invite) return viewInvite(invite[1]);
   if (!state.org && !(await loadSession())) return viewLogin();
   try {
     const m = /^#\/student\/([0-9a-f-]{36})$/i.exec(hash);

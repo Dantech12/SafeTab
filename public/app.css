@@ -279,3 +279,5 @@ tr:last-child td { border-bottom: none; }
   background: var(--surface); box-shadow: var(--shadow-lg); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
 }
 .savebar .muted { margin-right: auto; }
+
+.consent-text { white-space: pre-wrap; margin: 12px 0; padding: 14px 16px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); font-size: .92rem; line-height: 1.6; }

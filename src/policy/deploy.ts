@@ -4,9 +4,24 @@ import { hashToken, newToken } from "../lib/tokens.js";
 import type { MdmDeviceStatus, MdmProvider } from "../mdm/provider.js";
 import { policyIdForDevice } from "../mdm/provider.js";
 import { compilePolicy } from "./compile.js";
-import { DEFAULT_POLICY, isInDowntime, PolicySpec, type PolicySpec as Spec } from "./spec.js";
+import { DEFAULT_POLICY, isInDowntime, isInSchoolHours, PolicySpec, type PolicySpec as Spec } from "./spec.js";
+import { consentStatus } from "./consent.js";
 
-export type DeployReason = "policy_change" | "downtime_start" | "downtime_end" | "registration" | "enrollment";
+export type DeployReason = "policy_change" | "downtime_start" | "downtime_end" | "registration" | "enrollment" | "schedule" | "consent_change";
+
+/**
+ * What the schedule means for one device right now. Family-owned tablets never get
+ * downtime, and get school-hours rules only with a parent's consent to those exact rules.
+ */
+export async function scheduleState(tx: Tx, studentId: string, ownership: string, spec: Spec, now: Date) {
+  const family = ownership === "family_owned";
+  const inDowntime = !family && config().COMPANION_APP_ENABLED && isInDowntime(spec, now);
+  let consentOk = !family;
+  if (family && spec.schoolHours.enabled) consentOk = (await consentStatus(tx, studentId, spec)).status === "active";
+  const inSchoolHours = consentOk && isInSchoolHours(spec, now);
+  const schoolHours: "active" | "inactive" | "no_consent" = !consentOk ? "no_consent" : inSchoolHours ? "active" : "inactive";
+  return { inDowntime, inSchoolHours, schoolHours };
+}
 
 export async function loadSpec(tx: Tx, studentId: string): Promise<{ spec: Spec; version: number }> {
   const r = await tx.query("SELECT spec, version FROM policies WHERE student_id = $1", [studentId]);
@@ -40,7 +55,7 @@ export async function deployDevicePolicy(
   if (!dev.amapi_enterprise) throw new Error("organization has no Android enterprise configured");
 
   const { spec, version: specVersion } = await loadSpec(tx, dev.student_id);
-  const inDowntime = config().COMPANION_APP_ENABLED && isInDowntime(spec, now);
+  const { inDowntime, inSchoolHours, schoolHours } = await scheduleState(tx, dev.student_id, dev.ownership, spec, now);
 
   // Until the companion app registers, each push carries a fresh one-time code.
   let registrationCode: string | undefined;
@@ -64,6 +79,7 @@ export async function deployDevicePolicy(
     companionEnabled,
     apiBaseUrl: config().PUBLIC_BASE_URL,
     registrationCode,
+    schoolHours,
   });
 
   let mdmVersion: number | null = null;
@@ -81,7 +97,7 @@ export async function deployDevicePolicy(
      VALUES (app_current_org(), $1, $2, $3, $4, $5, $6)`,
     [deviceId, specVersion, mdmVersion, reason, status, JSON.stringify({ controls, error })],
   );
-  await tx.query("UPDATE devices SET in_downtime = $2 WHERE id = $1", [deviceId, inDowntime]);
+  await tx.query("UPDATE devices SET in_downtime = $2, in_school_hours = $3 WHERE id = $1", [deviceId, inDowntime, inSchoolHours]);
   return { status, registrationCode };
 }
 
