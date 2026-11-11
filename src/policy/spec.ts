@@ -40,6 +40,17 @@ export const PolicySpec = z.object({
       domains: z.array(Domain).max(1000).default([]),
     })
     .default({ mode: "off", domains: [] }),
+  // Apps switched off during school hours only. The one rule type that also applies,
+  // with recorded parent consent, to family-owned tablets. Apps are disabled (data kept),
+  // never uninstalled.
+  schoolHours: z
+    .object({
+      enabled: z.boolean().default(false),
+      timezone: z.string().default("UTC"),
+      windows: z.array(DowntimeWindow).max(14).default([]),
+      blockedApps: z.array(PackageName).max(200).default([]),
+    })
+    .default({ enabled: false, timezone: "UTC", windows: [], blockedApps: [] }),
   usageSummaries: z
     .object({
       // Daily per-app minute totals reported by the visible companion app. Off by default.
@@ -62,8 +73,10 @@ function isValidTimeZone(tz: string): boolean {
 
 export function parsePolicySpec(input: unknown): PolicySpec {
   const spec = PolicySpec.parse(input);
-  if (!isValidTimeZone(spec.downtime.timezone)) {
-    throw new z.ZodError([{ code: "custom", path: ["downtime", "timezone"], message: "unknown IANA time zone", input: spec.downtime.timezone }]);
+  for (const key of ["downtime", "schoolHours"] as const) {
+    if (!isValidTimeZone(spec[key].timezone)) {
+      throw new z.ZodError([{ code: "custom", path: [key, "timezone"], message: "unknown IANA time zone", input: spec[key].timezone }]);
+    }
   }
   return spec;
 }
@@ -80,16 +93,42 @@ function localTime(now: Date, tz: string): { day: number; minutes: number } {
 
 const toMin = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 
-/** True if `now` falls inside an enabled downtime window. Overnight windows belong to their start day. */
-export function isInDowntime(spec: PolicySpec, now: Date): boolean {
-  if (!spec.downtime.enabled) return false;
-  const { day, minutes } = localTime(now, spec.downtime.timezone);
+type Windowed = { timezone: string; windows: { days: number[]; start: string; end: string }[] };
+
+/** True if `now` falls inside one of the windows. Overnight windows belong to their start day. */
+export function isInWindows(w: Windowed, now: Date): boolean {
+  const { day, minutes } = localTime(now, w.timezone);
   const prevDay = day === 1 ? 7 : day - 1;
-  return spec.downtime.windows.some((w) => {
-    const s = toMin(w.start);
-    const e = toMin(w.end);
-    if (s < e) return w.days.includes(day) && minutes >= s && minutes < e;
+  return w.windows.some((win) => {
+    const s = toMin(win.start);
+    const e = toMin(win.end);
+    if (s < e) return win.days.includes(day) && minutes >= s && minutes < e;
     // crosses midnight: [s, 24:00) on start day, [00:00, e) on the following day
-    return (w.days.includes(day) && minutes >= s) || (w.days.includes(prevDay) && minutes < e);
+    return (win.days.includes(day) && minutes >= s) || (win.days.includes(prevDay) && minutes < e);
+  });
+}
+
+/** True if `now` falls inside an enabled downtime window. */
+export function isInDowntime(spec: PolicySpec, now: Date): boolean {
+  return spec.downtime.enabled && isInWindows(spec.downtime, now);
+}
+
+/** True if `now` falls inside an enabled school-hours window. */
+export function isInSchoolHours(spec: PolicySpec, now: Date): boolean {
+  return spec.schoolHours.enabled && spec.schoolHours.blockedApps.length > 0 && isInWindows(spec.schoolHours, now);
+}
+
+/**
+ * Canonical form of the school-hours rules a parent consents to. If the school changes
+ * any of it, the stored consent no longer matches and enforcement pauses until the
+ * parent agrees to the new rules.
+ */
+export function schoolHoursScope(spec: PolicySpec): string {
+  const sh = spec.schoolHours;
+  return JSON.stringify({
+    enabled: sh.enabled,
+    timezone: sh.timezone,
+    windows: sh.windows.map((w) => ({ days: [...w.days].sort(), start: w.start, end: w.end })),
+    blockedApps: [...new Set(sh.blockedApps)].sort(),
   });
 }

@@ -1,7 +1,7 @@
 import type { Tx } from "../db/pool.js";
 import { forbidden, notFound } from "../lib/errors.js";
 
-export type Role = "org_admin" | "supervisor";
+export type Role = "org_admin" | "supervisor" | "guardian";
 
 export type Permission =
   | "org.manage" // settings, retention, members, invitations
@@ -14,7 +14,8 @@ export type Permission =
   | "activity.read"
   | "audit.read"
   | "data.export"
-  | "data.delete";
+  | "data.delete"
+  | "consent.give"; // only a parent/guardian, for their own child
 
 const MATRIX: Record<Role, ReadonlySet<Permission>> = {
   org_admin: new Set<Permission>([
@@ -23,6 +24,9 @@ const MATRIX: Record<Role, ReadonlySet<Permission>> = {
   ]),
   // Supervisors (school staff / a second guardian) act only on students assigned to them.
   supervisor: new Set<Permission>(["student.read", "policy.write", "activity.read"]),
+  // Parents/guardians: see their own child (via assignment) and give/withdraw consent.
+  // They cannot change the school's rules.
+  guardian: new Set<Permission>(["student.read", "consent.give"]),
 };
 
 export interface UserCtx {

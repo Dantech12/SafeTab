@@ -16,10 +16,15 @@ export interface CompileInput {
   apiBaseUrl: string;
   /** One-time code delivered via managed configuration until the companion app registers. */
   registrationCode?: string | null;
+  /**
+   * School-hours state for this device: "active" (inside a window, allowed), "inactive"
+   * (outside), "no_consent" (family-owned tablet without matching parent consent).
+   */
+  schoolHours?: "active" | "inactive" | "no_consent";
 }
 
 export interface ControlStatus {
-  control: "downtime" | "apps" | "web" | "usageSummaries";
+  control: "downtime" | "apps" | "web" | "usageSummaries" | "schoolHours";
   supported: boolean;
   note?: string;
 }
@@ -31,9 +36,12 @@ export interface CompileResult {
 
 const CHROME = "com.android.chrome";
 
+const FAMILY_NOTE = "Not applied on parent-owned tablets: only school-hours rules apply there.";
+
 export function compilePolicy(input: CompileInput): CompileResult {
   const { spec } = input;
   const controls: ControlStatus[] = [];
+  const family = input.ownership === "family_owned";
 
   const companion: Record<string, unknown> = {
     packageName: input.companionPackage,
@@ -61,7 +69,11 @@ export function compilePolicy(input: CompileInput): CompileResult {
   };
 
   // --- Apps ---------------------------------------------------------------
-  if (spec.apps.mode === "allowlist") {
+  if (family) {
+    // The family decides what is installed; the school only acts during school hours.
+    policy.playStoreMode = "BLACKLIST";
+    if (spec.apps.packages.length || spec.apps.mode === "allowlist") controls.push({ control: "apps", supported: false, note: FAMILY_NOTE });
+  } else if (spec.apps.mode === "allowlist") {
     policy.playStoreMode = "WHITELIST"; // AMAPI enum name; only listed apps are available
     for (const pkg of spec.apps.packages) {
       if (pkg === input.companionPackage) continue;
@@ -74,10 +86,12 @@ export function compilePolicy(input: CompileInput): CompileResult {
       applications.push({ packageName: pkg, installType: "BLOCKED" });
     }
   }
-  controls.push({ control: "apps", supported: true });
+  if (!family) controls.push({ control: "apps", supported: true });
 
   // --- Web (managed Chrome only) -----------------------------------------
-  if (spec.web.mode !== "off") {
+  if (spec.web.mode !== "off" && family) {
+    controls.push({ control: "web", supported: false, note: FAMILY_NOTE });
+  } else if (spec.web.mode !== "off") {
     const domains = spec.web.domains;
     const managedConfiguration: Record<string, unknown> =
       spec.web.mode === "allowlist"
@@ -98,7 +112,9 @@ export function compilePolicy(input: CompileInput): CompileResult {
   }
 
   // --- Downtime ------------------------------------------------------------
-  if (spec.downtime.enabled && !input.companionEnabled) {
+  if (spec.downtime.enabled && family) {
+    controls.push({ control: "downtime", supported: false, note: FAMILY_NOTE });
+  } else if (spec.downtime.enabled && !input.companionEnabled) {
     controls.push({ control: "downtime", supported: false, note: "Not applied: downtime needs the SafeTab app, which is not enabled yet." });
   } else if (spec.downtime.enabled) {
     // AMAPI has no native schedule. SafeTab switches the device into a kiosk policy whose
@@ -119,8 +135,28 @@ export function compilePolicy(input: CompileInput): CompileResult {
     }
   }
 
+  // --- School hours ------------------------------------------------------------
+  if (spec.schoolHours.enabled && spec.schoolHours.blockedApps.length) {
+    if (input.schoolHours === "no_consent") {
+      controls.push({ control: "schoolHours", supported: false, note: "Waiting for a parent's consent to these exact rules." });
+    } else {
+      controls.push({ control: "schoolHours", supported: true, note: "Apps are switched off (not deleted) during school hours, when the tablet is online." });
+      if (input.schoolHours === "active") {
+        for (const pkg of spec.schoolHours.blockedApps) {
+          if (pkg === input.companionPackage) continue;
+          const existing = applications.find((a) => a.packageName === pkg);
+          // `disabled` keeps the app and its data; BLOCKED would uninstall it.
+          if (existing) existing.disabled = true;
+          else applications.push({ packageName: pkg, installType: "AVAILABLE", disabled: true });
+        }
+      }
+    }
+  }
+
   // --- Usage summaries -------------------------------------------------------
-  if (spec.usageSummaries.enabled && !input.companionEnabled) {
+  if (spec.usageSummaries.enabled && family) {
+    controls.push({ control: "usageSummaries", supported: false, note: FAMILY_NOTE });
+  } else if (spec.usageSummaries.enabled && !input.companionEnabled) {
     controls.push({ control: "usageSummaries", supported: false, note: "Not collected: needs the SafeTab app, which is not enabled yet." });
   } else if (spec.usageSummaries.enabled) {
     controls.push({

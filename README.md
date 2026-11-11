@@ -10,6 +10,8 @@ SafeTab uses only official platform features: Android Enterprise via the Android
 ➡️ **Full design and plan:** [`docs/IMPLEMENTATION_GUIDE.md`](docs/IMPLEMENTATION_GUIDE.md)
 ➡️ **Enroll a real test tablet from your computer:** [`docs/PILOT_SETUP.md`](docs/PILOT_SETUP.md)
 
+➡️ **Students' own (parent-owned) tablets:** [`docs/PARENT_OWNED_TABLETS.md`](docs/PARENT_OWNED_TABLETS.md)
+
 > Pilot backend, **not production-ready**. It still needs real-device validation, a security review, and a privacy/legal review. The open items are listed in the guide.
 
 ## Stack

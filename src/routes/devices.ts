@@ -6,7 +6,8 @@ import { requirePerm, requireStudentAccess } from "../auth/rbac.js";
 import { audit } from "../audit.js";
 import { HttpError, notFound } from "../lib/errors.js";
 import { PLAN_LIMITS } from "../billing/entitlements.js";
-import { deployDevicePolicy } from "../policy/deploy.js";
+import { deployDevicePolicy, loadSpec } from "../policy/deploy.js";
+import { consentStatus } from "../policy/consent.js";
 import { policyIdForDevice } from "../mdm/provider.js";
 import { requireFullAccess } from "./students.js";
 import { config } from "../config.js";
@@ -62,6 +63,12 @@ export async function deviceRoutes(app: FastifyInstance) {
       await requireFullAccess(tx, deps.now());
       const org = (await tx.query("SELECT kind, amapi_enterprise FROM organizations")).rows[0];
       if (!org.amapi_enterprise) throw new HttpError(409, "android_enterprise_not_configured");
+      if (body.ownership === "family_owned" && org.kind === "school") {
+        // A school may manage a parent-owned tablet only with that parent's consent to
+        // the exact school-hours rules (given by the parent in SafeTab).
+        const { spec } = await loadSpec(tx, studentId);
+        if ((await consentStatus(tx, studentId, spec)).status !== "active") throw new HttpError(409, "parent_consent_required");
+      }
       const sub = (await tx.query("SELECT plan FROM subscriptions")).rows[0];
       const count = Number((await tx.query("SELECT count(*) FROM devices WHERE state <> 'retired'")).rows[0].count);
       if (count >= PLAN_LIMITS[sub.plan as "individual" | "organization"].devices) throw new HttpError(402, "device_limit_reached");
