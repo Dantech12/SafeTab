@@ -10,7 +10,20 @@ import type { EnrollmentToken, MdmDeviceStatus, MdmProvider } from "./provider.j
  */
 const BASE = "https://androidmanagement.googleapis.com/v1";
 
+function toStatus(d: any): MdmDeviceStatus {
+  return {
+    name: d.name,
+    state: d.state,
+    appliedPolicyVersion: d.appliedPolicyVersion ? Number(d.appliedPolicyVersion) : undefined,
+    lastStatusReportTime: d.lastStatusReportTime,
+    policyCompliant: d.policyCompliant,
+    nonComplianceDetails: d.nonComplianceDetails,
+    enrollmentTokenName: d.enrollmentTokenName,
+  };
+}
+
 export class AmapiProvider implements MdmProvider {
+  constructor(private projectId: string) {}
   private auth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/androidmanagement"] });
 
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -41,16 +54,7 @@ export class AmapiProvider implements MdmProvider {
   }
 
   async getDevice(deviceName: string): Promise<MdmDeviceStatus> {
-    const d = await this.call<any>("GET", deviceName);
-    return {
-      name: d.name,
-      state: d.state,
-      appliedPolicyVersion: d.appliedPolicyVersion ? Number(d.appliedPolicyVersion) : undefined,
-      lastStatusReportTime: d.lastStatusReportTime,
-      policyCompliant: d.policyCompliant,
-      nonComplianceDetails: d.nonComplianceDetails,
-      enrollmentTokenName: d.enrollmentTokenName,
-    };
+    return toStatus(await this.call<any>("GET", deviceName));
   }
 
   async lockDevice(deviceName: string) {
@@ -59,5 +63,28 @@ export class AmapiProvider implements MdmProvider {
 
   async deleteDevice(deviceName: string) {
     await this.call("DELETE", deviceName);
+  }
+
+  async listDevices(enterprise: string): Promise<MdmDeviceStatus[]> {
+    const out: MdmDeviceStatus[] = [];
+    let pageToken: string | undefined;
+    do {
+      const qs = new URLSearchParams({ pageSize: "100", ...(pageToken ? { pageToken } : {}) });
+      const page = await this.call<{ devices?: any[]; nextPageToken?: string }>("GET", `${enterprise}/devices?${qs}`);
+      for (const d of page.devices ?? []) out.push(toStatus(d));
+      pageToken = page.nextPageToken;
+    } while (pageToken);
+    return out;
+  }
+
+  async createSignupUrl(callbackUrl: string) {
+    const qs = new URLSearchParams({ projectId: this.projectId, callbackUrl });
+    return this.call<{ name: string; url: string }>("POST", `signupUrls?${qs}`);
+  }
+
+  async createEnterprise(signupUrlName: string, enterpriseToken: string, displayName: string) {
+    const qs = new URLSearchParams({ projectId: this.projectId, signupUrlName, enterpriseToken });
+    // No pubsubTopic: pilot uses status polling (no Pub/Sub / billing required).
+    return this.call<{ name: string }>("POST", `enterprises?${qs}`, { enterpriseDisplayName: displayName });
   }
 }

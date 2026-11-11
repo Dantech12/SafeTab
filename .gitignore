@@ -6,3 +6,4 @@ dist/
 *.key
 *service-account*.json
 coverage/
+pilot-enrollment-qr.png

@@ -1,20 +1,19 @@
 import { buildApp } from "./app.js";
 import { config } from "./config.js";
 import { HttpPaystackClient } from "./billing/paystack.js";
-import { FakeMdmProvider } from "./mdm/fake.js";
-import { AmapiProvider } from "./mdm/amapi.js";
+import { makeMdm } from "./mdm/factory.js";
 import { makePubSubVerifier } from "./mdm/pubsub.js";
 
 const c = config();
-if (c.NODE_ENV === "production" && c.MDM_PROVIDER === "fake") {
-  throw new Error("MDM_PROVIDER=fake is not allowed in production");
-}
 
 const app = await buildApp({
-  mdm: c.MDM_PROVIDER === "amapi" ? new AmapiProvider() : new FakeMdmProvider(),
+  mdm: makeMdm(),
   paystack: new HttpPaystackClient(c.PAYSTACK_SECRET_KEY, c.PAYSTACK_BASE_URL),
-  verifyPubSubPush: makePubSubVerifier(c.PUBSUB_PUSH_AUDIENCE, c.PUBSUB_PUSH_SERVICE_ACCOUNT),
+  // In poll mode the Pub/Sub endpoint stays closed (verifier rejects everything).
+  verifyPubSubPush: c.DEVICE_STATUS_MODE === "pubsub"
+    ? makePubSubVerifier(c.PUBSUB_PUSH_AUDIENCE, c.PUBSUB_PUSH_SERVICE_ACCOUNT)
+    : async () => false,
   now: () => new Date(),
 });
 
-await app.listen({ port: c.PORT, host: "0.0.0.0" });
+await app.listen({ port: c.PORT, host: c.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1" });

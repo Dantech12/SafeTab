@@ -22,6 +22,13 @@ const Env = z.object({
   PUBSUB_PUSH_AUDIENCE: z.string().optional(),
   PUBSUB_PUSH_SERVICE_ACCOUNT: z.string().optional(),
   COMPANION_APP_PACKAGE: z.string().default("org.example.safetab.student"),
+  // Keep false until the companion app is published in managed Google Play: a
+  // force-installed app that does not exist leaves the device non-compliant.
+  COMPANION_APP_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  // "poll": the worker asks AMAPI for device status (no Pub/Sub, no billing needed).
+  // "pubsub": Google pushes notifications to /webhooks/amapi.
+  DEVICE_STATUS_MODE: z.enum(["poll", "pubsub"]).default("poll"),
+  DEVICE_POLL_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
   DEFAULT_USAGE_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(30),
 });
 
@@ -38,6 +45,9 @@ export function config(): Config {
     }
     if (parsed.data.NODE_ENV === "production" && parsed.data.PAYSTACK_SECRET_KEY.startsWith("sk_test_")) {
       console.warn("WARNING: production is running with a Paystack test key");
+    }
+    if (parsed.data.MDM_PROVIDER === "amapi" && !parsed.data.GOOGLE_CLOUD_PROJECT_ID) {
+      throw new Error("Invalid configuration for: GOOGLE_CLOUD_PROJECT_ID (required when MDM_PROVIDER=amapi)");
     }
     cached = parsed.data;
   }
