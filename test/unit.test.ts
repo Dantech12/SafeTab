@@ -101,3 +101,15 @@ describe("paystack signature", () => {
     expect(verifyPaystackSignature(Buffer.from(raw), "zz", key)).toBe(false);
   });
 });
+
+describe("isMain", () => {
+  it("matches Windows-style and POSIX entry paths", async () => {
+    const { isMain } = await import("../src/lib/is-main.js");
+    const { pathToFileURL } = await import("node:url");
+    const saved = process.argv[1];
+    process.argv[1] = "/home/x/SafeTab/src/db/migrate.ts";
+    expect(isMain(pathToFileURL("/home/x/SafeTab/src/db/migrate.ts").href)).toBe(true);
+    expect(isMain("file:///home/x/SafeTab/src/other.ts")).toBe(false);
+    process.argv[1] = saved as string;
+  });
+});
