@@ -31,7 +31,7 @@ export async function orgRoutes(app: FastifyInstance) {
     const ctx = await app.userCtx(req);
     return withTenant(ctx.orgId, async (tx) => {
       const o = (await tx.query("SELECT id, kind, name, country, usage_retention_days, audit_retention_days, amapi_enterprise IS NOT NULL AS android_configured FROM organizations")).rows[0];
-      return { ...o, myRole: ctx.role };
+      return { ...o, myRole: ctx.role, companionAppEnabled: config().COMPANION_APP_ENABLED, pilotMode: config().NODE_ENV !== "production" };
     });
   });
 

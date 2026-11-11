@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import QRCode from "qrcode";
 import { withTenant } from "../db/pool.js";
 import { requirePerm, requireStudentAccess } from "../auth/rbac.js";
 import { audit } from "../audit.js";
@@ -74,7 +75,9 @@ export async function deviceRoutes(app: FastifyInstance) {
       const token = await deps.mdm.createEnrollmentToken(org.amapi_enterprise, policyIdForDevice(dev.id), ENROLLMENT_TTL_S, dev.id);
       await tx.query("UPDATE devices SET enrollment_token_name = $2, enrollment_expires_at = $3 WHERE id = $1", [dev.id, token.name, token.expiresAt]);
       await audit(tx, { actorType: "user", actorId: ctx.userId, action: "device.enrollment_created", targetType: "device", targetId: dev.id, metadata: { ownership: body.ownership }, ip: ctx.ip });
-      return reply.status(201).send({ deviceId: dev.id, qrCode: token.qrCode, expiresAt: token.expiresAt });
+      // PNG rendered server-side so the portal needs no QR library (and no third-party site).
+      const qrPng = await QRCode.toDataURL(token.qrCode, { width: 480, errorCorrectionLevel: "M", margin: 2 });
+      return reply.status(201).send({ deviceId: dev.id, qrCode: token.qrCode, qrPng, expiresAt: token.expiresAt });
     });
   });
 

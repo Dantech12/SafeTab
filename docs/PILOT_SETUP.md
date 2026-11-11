@@ -54,25 +54,21 @@ Leave `COMPANION_APP_ENABLED=false`. The SafeTab student app isn't published yet
 npm run migrate
 ```
 
-## 4. Start SafeTab (two terminal windows)
-Window 1, the API:
+## 4. Start SafeTab
 ```bash
 npm run dev
 ```
-Window 2, the worker (checks device status every 5 minutes):
-```bash
-npm run worker
-```
+Leave this window open. It runs the server and the background jobs (device status checks every 5 minutes). `npm run worker` is only needed for production setups.
 
-## 5. Run the guided setup (third terminal window)
-```bash
-npm run pilot
-```
-It walks you through these steps:
-1. **Admin account:** create one (email + a password of 12+ characters).
-2. **Billing:** activated for 30 days without payment. This is local pilot only.
-3. **Connect Android:** it prints a Google link. Open it, sign in with a Google account (a personal Gmail is fine for testing), and follow Google's steps. Google only returns to `https://` addresses, so on your computer it ends on a static Google page. That page may look blank or say "not found", and that's expected. If it says **"Please copy this code"**, copy that code; otherwise copy the whole address from the browser's address bar (it contains `enterpriseToken=`). Paste either one into the script. If your server has a public `https://` address in `PUBLIC_BASE_URL`, Google returns straight to SafeTab instead, and the browser shows **"Android connected"**.
-4. **QR code:** it creates a test student and saves `pilot-enrollment-qr.png`. The QR works once and expires after 24 hours.
+## 5. Use the portal
+Open **http://localhost:3000** in your browser.
+1. **Create account** (or sign in).
+2. On **Home → Setup**:
+   - **Activate pilot**: 30 days, no payment. Local pilot only.
+   - **Connect Android**: click *Open Google signup*. Sign in with a Google account; for a personal Gmail choose *Sign up for Android only*. Accept the agreement. On Google's last page, copy the code (or the whole address) and paste it into the box, then click **Connect**.
+3. **Add a student**, then open them and click **Add a tablet**. The QR code and instructions appear on screen.
+
+(The older `npm run pilot` terminal script still works if you prefer it.)
 
 ## 6. Enroll the tablet
 1. Factory-reset the tablet (**Settings → System → Reset options → Erase all data**). Everything on it is erased.
