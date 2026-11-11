@@ -61,6 +61,18 @@ export async function billingRoutes(app: FastifyInstance) {
     return withTenant(ctx.orgId, async (tx) => ({ result: await confirmPayment(tx, deps.paystack, reference, deps.now()) }));
   });
 
+  /** Local pilot only: 30 days of access without payment. Disabled in production. */
+  app.post("/v1/orgs/:orgId/billing/pilot-activate", async (req) => {
+    const ctx = await app.userCtx(req);
+    requirePerm(ctx, "billing.manage");
+    if (config().NODE_ENV === "production") throw new HttpError(404, "not_found");
+    return withTenant(ctx.orgId, async (tx) => {
+      await tx.query("UPDATE subscriptions SET status = 'active', grace_until = NULL, current_period_end = now() + interval '30 days', updated_at = now()");
+      await audit(tx, { actorType: "user", actorId: ctx.userId, action: "billing.pilot_activated", ip: ctx.ip });
+      return { status: "active", pilot: true };
+    });
+  });
+
   app.post("/v1/orgs/:orgId/billing/cancel", async (req) => {
     const ctx = await app.userCtx(req);
     requirePerm(ctx, "billing.manage");

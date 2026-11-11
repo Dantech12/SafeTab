@@ -33,6 +33,9 @@ const Env = z.object({
   ANDROID_MANUAL_CALLBACK_URL: z.string().url().startsWith("https://")
     .default("https://storage.googleapis.com/android-management-quick-start/enterprise_signup_callback.html"),
   DEVICE_STATUS_MODE: z.enum(["poll", "pubsub"]).default("poll"),
+  // Run scheduled jobs inside the API process (local pilot). Set false when running
+  // `npm run worker` separately (production).
+  EMBED_SCHEDULER: z.enum(["true", "false"]).optional().transform((v) => v === undefined ? undefined : v === "true"),
   DEVICE_POLL_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
   DEFAULT_USAGE_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(30),
 });
@@ -54,6 +57,7 @@ export function config(): Config {
     if (parsed.data.MDM_PROVIDER === "amapi" && !parsed.data.GOOGLE_CLOUD_PROJECT_ID) {
       throw new Error("Invalid configuration for: GOOGLE_CLOUD_PROJECT_ID (required when MDM_PROVIDER=amapi)");
     }
+    parsed.data.EMBED_SCHEDULER ??= parsed.data.NODE_ENV !== "production";
     cached = parsed.data;
   }
   return cached;

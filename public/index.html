@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SafeTab Portal</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/">SafeTab</a>
+    <nav id="nav" hidden>
+      <a href="#/">Home</a>
+      <a href="#/privacy">What we collect</a>
+      <a href="#/audit" data-admin-only>Activity log</a>
+      <span class="org" id="org-name"></span>
+      <button class="link" data-action="logout" type="button">Sign out</button>
+    </nav>
+  </header>
+  <div id="flash" role="status" aria-live="polite"></div>
+  <main id="app"><p class="muted">Loading…</p></main>
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -17,6 +17,7 @@ import { deviceApiRoutes } from "./routes/device-api.js";
 import { billingRoutes } from "./routes/billing.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { androidRoutes } from "./routes/android.js";
+import { portalRoutes } from "./routes/portal.js";
 
 export interface Deps {
   mdm: MdmProvider;
@@ -101,5 +102,6 @@ export async function buildApp(deps: Deps): Promise<FastifyInstance> {
   await app.register(billingRoutes);
   await app.register(webhookRoutes);
   await app.register(androidRoutes);
+  await app.register(portalRoutes);
   return app;
 }
