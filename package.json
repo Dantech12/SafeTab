@@ -1,0 +1,34 @@
+{
+  "name": "safetab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Transparent, privacy-preserving parental-control and school device-management service (Android Enterprise pilot).",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "migrate": "tsx src/db/migrate.ts",
+    "retention": "tsx src/jobs/retention.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/helmet": "^13.2.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@node-rs/argon2": "^2.2.2",
+    "fastify": "^5.12.8",
+    "google-auth-library": "^10.9.1",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
+    "tsx": "^4.23.15",
+    "typescript": "5.9",
+    "vitest": "^3.2.7"
+  }
+}
