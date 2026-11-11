@@ -71,7 +71,7 @@ npm run pilot
 It walks you through these steps:
 1. **Admin account:** create one (email + a password of 12+ characters).
 2. **Billing:** activated for 30 days without payment. This is local pilot only.
-3. **Connect Android:** it prints a Google link. Open it, sign in with a Google account (a personal Gmail is fine for testing), and follow Google's steps. Google only returns to `https://` addresses, so on your computer it ends on a static Google page. That page may look blank or say "not found", and that's expected. **Copy the whole address from the browser's address bar** (it contains `enterpriseToken=`) and paste it into the script. If your server has a public `https://` address in `PUBLIC_BASE_URL`, Google returns straight to SafeTab instead, and the browser shows **"Android connected"**.
+3. **Connect Android:** it prints a Google link. Open it, sign in with a Google account (a personal Gmail is fine for testing), and follow Google's steps. Google only returns to `https://` addresses, so on your computer it ends on a static Google page. That page may look blank or say "not found", and that's expected. If it says **"Please copy this code"**, copy that code; otherwise copy the whole address from the browser's address bar (it contains `enterpriseToken=`). Paste either one into the script. If your server has a public `https://` address in `PUBLIC_BASE_URL`, Google returns straight to SafeTab instead, and the browser shows **"Android connected"**.
 4. **QR code:** it creates a test student and saves `pilot-enrollment-qr.png`. The QR works once and expires after 24 hours.
 
 ## 6. Enroll the tablet

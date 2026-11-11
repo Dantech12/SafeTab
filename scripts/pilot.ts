@@ -89,24 +89,39 @@ async function main() {
   console.log("\n== 3. Connect Android Enterprise ==");
   let android = await api("GET", `/v1/orgs/${orgId}/android`, token);
   if (!android.json.connected) {
+    // A code from an earlier run can still be used: a new signup link would replace it.
+    const existing = await ask("Do you already have a code from Google's final page? Paste it, or press Enter to get a new link", "");
+    if (existing) {
+      const t0 = /[?&]enterpriseToken=([^&#\s]+)/.exec(existing)?.[1] ?? existing;
+      const done = await api("POST", `/v1/orgs/${orgId}/android/complete`, token, { enterpriseToken: decodeURIComponent(t0) });
+      if (done.status === 200) android = { status: 200, json: done.json };
+      else console.log(`That code could not be used (${done.json.error ?? done.status}). Getting a new link instead.\n`);
+    }
+  }
+  if (!android.json.connected) {
     const su = await api("POST", `/v1/orgs/${orgId}/android/signup`, token);
     if (su.status !== 200) throw new Error(`Could not start Android signup: ${JSON.stringify(su.json)}`);
     if (su.json.mode === "manual") {
       console.log("\nOpen this link in your browser and sign in with the Google account that will own the test enterprise:\n");
       console.log(su.json.signupUrl, "\n");
       console.log("Follow Google's steps. At the end Google sends you to a final page (it may look blank or say");
-      console.log("\"not found\" - that is OK). Copy the WHOLE address from the browser's address bar");
-      console.log("(it contains \"enterpriseToken=\") and paste it below.\n");
+      console.log("\"not found\" - that is OK). Paste EITHER the code shown on that page, OR the whole");
+      console.log("address from the browser's address bar (it contains \"enterpriseToken=\").\n");
       for (let attempt = 0; attempt < 3 && !android.json.connected; attempt++) {
-        const pasted = await ask("Paste the address here");
-        const tokenParam = /[?&]enterpriseToken=([^&#\s]+)/.exec(pasted)?.[1];
+        const pasted = await ask("Paste the code or address here");
+        // Accept either the full address (…?enterpriseToken=XYZ) or the bare code that
+        // Google's final page displays ("Please copy this code…").
+        const fromUrl = /[?&]enterpriseToken=([^&#\s]+)/.exec(pasted)?.[1];
+        const bare = /^[A-Za-z0-9_-]{20,500}$/.test(pasted) ? pasted : undefined;
+        const tokenParam = fromUrl ?? bare;
         if (!tokenParam) {
-          console.log("That address has no enterpriseToken in it. Copy the full address from the final page and try again.");
+          console.log("That doesn't look like the code or the address from Google's final page. Try again.");
           continue;
         }
         const done = await api("POST", `/v1/orgs/${orgId}/android/complete`, token, { enterpriseToken: decodeURIComponent(tokenParam) });
         if (done.status === 200) android = { status: 200, json: done.json };
-        else throw new Error(`Google did not accept it (${done.json.error ?? done.status}). Run the script again to get a fresh link.`);
+        else if (done.json.error === "google_rejected_token_start_again") throw new Error("Google did not accept that code (it may have expired). Run the script again and press Enter for a fresh link.");
+        else throw new Error(`Could not finish connecting (${done.json.error ?? done.status}). Run the script again.`);
       }
     } else {
       console.log("\nOpen this link in your browser, sign in with the Google account that will own the test enterprise,");
