@@ -1,4 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// Redirect mode needs a public https base URL (Google rejects http callbacks).
+vi.hoisted(() => {
+  process.env.PUBLIC_BASE_URL = "https://safetab.test";
+});
 import { activateSubscription, auth, makeApp, ownerQuery, resetDb, signup, type TestCtx } from "./helpers.js";
 import { closePool } from "../src/db/pool.js";
 import { pollDeviceStatus } from "../src/jobs/poll-devices.js";
@@ -37,6 +42,7 @@ describe("Android Enterprise signup", () => {
     const r = await t.app.inject({ method: "POST", url: url("/android/signup"), headers: auth(admin.token) });
     expect(r.statusCode).toBe(200);
     expect(r.json().signupUrl).toMatch(/^https:\/\//);
+    expect(r.json().mode).toBe("redirect");
     signupName = [...t.mdm.signups.keys()].at(-1)!;
     const row = (await ownerQuery("SELECT amapi_signup_state_hash FROM organizations WHERE id = $1", [admin.orgId])).rows[0];
     const callback = t.mdm.signups.get(signupName)!.callbackUrl;

@@ -91,15 +91,34 @@ async function main() {
   if (!android.json.connected) {
     const su = await api("POST", `/v1/orgs/${orgId}/android/signup`, token);
     if (su.status !== 200) throw new Error(`Could not start Android signup: ${JSON.stringify(su.json)}`);
-    console.log("\nOpen this link in your browser, sign in with the Google account that will own the test enterprise,");
-    console.log("and finish Google's steps. You will come back to a page saying \"Android connected\".\n");
-    console.log(su.json.signupUrl, "\n");
-    console.log("Waiting for you to finish (up to 60 minutes)...");
-    for (let i = 0; i < 720 && !android.json.connected; i++) {
-      await sleep(5000);
-      android = await api("GET", `/v1/orgs/${orgId}/android`, token);
+    if (su.json.mode === "manual") {
+      console.log("\nOpen this link in your browser and sign in with the Google account that will own the test enterprise:\n");
+      console.log(su.json.signupUrl, "\n");
+      console.log("Follow Google's steps. At the end Google sends you to a final page (it may look blank or say");
+      console.log("\"not found\" - that is OK). Copy the WHOLE address from the browser's address bar");
+      console.log("(it contains \"enterpriseToken=\") and paste it below.\n");
+      for (let attempt = 0; attempt < 3 && !android.json.connected; attempt++) {
+        const pasted = await ask("Paste the address here");
+        const tokenParam = /[?&]enterpriseToken=([^&#\s]+)/.exec(pasted)?.[1];
+        if (!tokenParam) {
+          console.log("That address has no enterpriseToken in it. Copy the full address from the final page and try again.");
+          continue;
+        }
+        const done = await api("POST", `/v1/orgs/${orgId}/android/complete`, token, { enterpriseToken: decodeURIComponent(tokenParam) });
+        if (done.status === 200) android = { status: 200, json: done.json };
+        else throw new Error(`Google did not accept it (${done.json.error ?? done.status}). Run the script again to get a fresh link.`);
+      }
+    } else {
+      console.log("\nOpen this link in your browser, sign in with the Google account that will own the test enterprise,");
+      console.log("and finish Google's steps. You will come back to a page saying \"Android connected\".\n");
+      console.log(su.json.signupUrl, "\n");
+      console.log("Waiting for you to finish (up to 60 minutes)...");
+      for (let i = 0; i < 720 && !android.json.connected; i++) {
+        await sleep(5000);
+        android = await api("GET", `/v1/orgs/${orgId}/android`, token);
+      }
     }
-    if (!android.json.connected) throw new Error("Timed out waiting for Android signup. Run the script again.");
+    if (!android.json.connected) throw new Error("Android was not connected. Run the script again to get a fresh link.");
   }
   console.log(`Connected: ${android.json.enterpriseName}`);
 

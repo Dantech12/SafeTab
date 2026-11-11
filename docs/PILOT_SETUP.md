@@ -71,7 +71,7 @@ npm run pilot
 It walks you through these steps:
 1. **Admin account:** create one (email + a password of 12+ characters).
 2. **Billing:** activated for 30 days without payment. This is local pilot only.
-3. **Connect Android:** it prints a Google link. Open it, sign in with a Google account (a personal Gmail is fine for testing), and follow Google's steps to create the test enterprise. When the browser shows **"Android connected"**, the script continues on its own.
+3. **Connect Android:** it prints a Google link. Open it, sign in with a Google account (a personal Gmail is fine for testing), and follow Google's steps. Google only returns to `https://` addresses, so on your computer it ends on a static Google page. That page may look blank or say "not found", and that's expected. **Copy the whole address from the browser's address bar** (it contains `enterpriseToken=`) and paste it into the script. If your server has a public `https://` address in `PUBLIC_BASE_URL`, Google returns straight to SafeTab instead, and the browser shows **"Android connected"**.
 4. **QR code:** it creates a test student and saves `pilot-enrollment-qr.png`. The QR works once and expires after 24 hours.
 
 ## 6. Enroll the tablet
@@ -109,7 +109,8 @@ curl -s http://localhost:3000/v1/orgs/ORG_ID/students/STUDENT_ID/policy -H "auth
 | `PERMISSION_DENIED` / 403 from Google | Check that the key file path is right, that the service account has the **Android Management User** role, and that the API is enabled in *this* project. |
 | Google asks for billing during signup | Stop and tell us. Don't enter card details for this pilot. |
 | QR scanner doesn't open after 6 taps | Make sure the tablet is fully factory-reset and on the very first screen. Some devices need Android 7+ and Google Play services. |
-| Google refuses the signup request, or the link never returns to "Android connected" | Google may not accept a `http://localhost` callback address. Tell us the exact error. The fallback is a public HTTPS address (e.g. a free tunnel) set as `PUBLIC_BASE_URL`. |
+| `INSECURE_CALLBACK_URL` in the server window | You are on an old version. Run `git pull` and restart the server. |
+| "Google did not accept it" after pasting | The link expires, and each one works once. Run `npm run pilot` again for a fresh link. |
 | Device never becomes active | Check that the worker is running and that `DEVICE_STATUS_MODE=poll`. |
 
 ## Before anything beyond a test

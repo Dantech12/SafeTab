@@ -32,14 +32,49 @@ export async function androidRoutes(app: FastifyInstance) {
       const org = (await tx.query("SELECT amapi_enterprise FROM organizations")).rows[0];
       if (org.amapi_enterprise) throw new HttpError(409, "android_already_connected");
       const state = newToken(24);
-      const callbackUrl = `${config().PUBLIC_BASE_URL}/android/callback?state=${state}`;
+      // Google only accepts https callback URLs. Without a public https address (e.g. a
+      // laptop on http://localhost) use "manual" mode: Google redirects to a static https
+      // page and the admin pastes the resulting address back via /android/complete.
+      const mode = config().PUBLIC_BASE_URL.startsWith("https://") ? "redirect" : "manual";
+      const callbackUrl = mode === "redirect"
+        ? `${config().PUBLIC_BASE_URL}/android/callback?state=${state}`
+        : config().ANDROID_MANUAL_CALLBACK_URL;
       const signup = await deps.mdm.createSignupUrl(callbackUrl);
       await tx.query(
         `UPDATE organizations SET amapi_signup_url_name = $1, amapi_signup_state_hash = $2,
            amapi_signup_expires_at = $3, amapi_signup_by = $4`,
         [signup.name, hashToken(state), new Date(Date.now() + SIGNUP_TTL_MS), ctx.userId]);
       await audit(tx, { actorType: "user", actorId: ctx.userId, action: "android.signup_started", ip: ctx.ip });
-      return { signupUrl: signup.url, expiresInMinutes: SIGNUP_TTL_MS / 60_000 };
+      return { signupUrl: signup.url, mode, expiresInMinutes: SIGNUP_TTL_MS / 60_000 };
+    });
+  });
+
+  /**
+   * Manual completion: the signed-in org admin submits the enterpriseToken that Google
+   * appended to the callback address. Bound to this org's own pending signup.
+   */
+  app.post("/v1/orgs/:orgId/android/complete", async (req) => {
+    const ctx = await app.userCtx(req);
+    requirePerm(ctx, "org.manage");
+    const body = z.object({ enterpriseToken: z.string().trim().min(1).max(500) }).parse(req.body);
+    return withTenant(ctx.orgId, async (tx) => {
+      const org = (await tx.query(
+        "SELECT name, amapi_enterprise, amapi_signup_url_name, amapi_signup_expires_at FROM organizations FOR UPDATE")).rows[0];
+      if (org.amapi_enterprise) throw new HttpError(409, "android_already_connected");
+      if (!org.amapi_signup_url_name || !(new Date(org.amapi_signup_expires_at) > new Date())) {
+        throw new HttpError(400, "no_pending_signup_start_again");
+      }
+      let ent: { name: string };
+      try {
+        ent = await deps.mdm.createEnterprise(org.amapi_signup_url_name, body.enterpriseToken, org.name);
+      } catch {
+        throw new HttpError(400, "google_rejected_token_start_again");
+      }
+      await tx.query(
+        `UPDATE organizations SET amapi_enterprise = $1, amapi_signup_url_name = NULL,
+           amapi_signup_state_hash = NULL, amapi_signup_expires_at = NULL`, [ent.name]);
+      await audit(tx, { actorType: "user", actorId: ctx.userId, action: "android.connected", metadata: { enterprise: ent.name, mode: "manual" }, ip: ctx.ip });
+      return { connected: true, enterpriseName: ent.name };
     });
   });
 

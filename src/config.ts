@@ -27,6 +27,11 @@ const Env = z.object({
   COMPANION_APP_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   // "poll": the worker asks AMAPI for device status (no Pub/Sub, no billing needed).
   // "pubsub": Google pushes notifications to /webhooks/amapi.
+  // Static https page Google redirects to during signup when PUBLIC_BASE_URL is not https.
+  // The page content does not matter: the admin copies the address (which carries
+  // ?enterpriseToken=...) from the browser bar. Default: Google's AMAPI quickstart page.
+  ANDROID_MANUAL_CALLBACK_URL: z.string().url().startsWith("https://")
+    .default("https://storage.googleapis.com/android-management-quick-start/enterprise_signup_callback.html"),
   DEVICE_STATUS_MODE: z.enum(["poll", "pubsub"]).default("poll"),
   DEVICE_POLL_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
   DEFAULT_USAGE_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(30),
