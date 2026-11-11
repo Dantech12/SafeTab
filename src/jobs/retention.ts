@@ -1,4 +1,5 @@
 import pg from "pg";
+import { isMain } from "../lib/is-main.js";
 
 /**
  * Deletes data past each organization's retention window. Runs daily as the owner role
@@ -22,7 +23,7 @@ export async function runRetention(ownerUrl: string): Promise<{ usage: number; a
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMain(import.meta.url)) {
   const url = process.env.DATABASE_OWNER_URL;
   if (!url) throw new Error("DATABASE_OWNER_URL is required");
   console.log(JSON.stringify(await runRetention(url)));

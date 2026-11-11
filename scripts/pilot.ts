@@ -57,12 +57,16 @@ async function main() {
     if (!org) throw new Error("This account is not an admin of any organization.");
     orgId = org.org_id;
     console.log(`Signed in. Using organization "${org.org_name}".`);
+  } else if (login.status !== 401) {
+    throw new Error(`Sign-in failed with a server error (${login.status}). Check the server window for details; if it says a table does not exist, run: npm run migrate`);
   } else {
     const create = (await ask("No account found (or wrong password). Create a new one? (y/n)", "y")).toLowerCase() === "y";
     if (!create) return;
     const orgName = await ask("School / organization name", "SafeTab Pilot School");
     const s = await api("POST", "/v1/auth/signup", undefined, { email, password, displayName: email.split("@")[0], account: { kind: "school", name: orgName } });
-    if (s.status !== 201) throw new Error(`Sign-up failed: ${JSON.stringify(s.json)}`);
+    if (s.status === 400) throw new Error(`Sign-up rejected: ${(s.json.issues ?? []).map((i: any) => `${i.path}: ${i.message}`).join("; ") || s.json.error}`);
+    if (s.status === 409) throw new Error("That email already has an account. Run the script again and enter the correct password.");
+    if (s.status !== 201) throw new Error(`Sign-up failed with a server error (${s.status}). Check the server window for details.`);
     token = s.json.token;
     orgId = s.json.orgId;
     console.log("Account and organization created.");
