@@ -47,10 +47,7 @@ const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
 const fmtDay = (v) => (v ? new Date(v).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—");
 const isAdmin = () => state.org?.myRole === "org_admin";
 const initials = (name) => String(name || "?").trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() || "").join("") || "?";
-const AVATAR_GRADS = [
-  "linear-gradient(135deg,#6366f1,#8b5cf6)", "linear-gradient(135deg,#0ea5e9,#22d3ee)", "linear-gradient(135deg,#f97316,#f43f5e)",
-  "linear-gradient(135deg,#10b981,#14b8a6)", "linear-gradient(135deg,#ec4899,#a855f7)", "linear-gradient(135deg,#eab308,#f97316)",
-];
+const AVATAR_GRADS = ["#1d4ed8", "#2563eb", "#1e40af", "#3b82f6", "#1e3a8a", "#0369a1"];
 const avatar = (name, id, cls = "") => {
   const n = [...String(id || name)].reduce((a, c) => a + c.charCodeAt(0), 0);
   return `<span class="avatar ${cls}" style="background:${AVATAR_GRADS[n % AVATAR_GRADS.length]}">${h(initials(name))}</span>`;
@@ -150,34 +147,48 @@ function setActiveNav(key) {
 }
 
 // ---------- views ----------
+function authScreen(inner) {
+  return `<div class="auth-screen">
+    <section class="auth-side">
+      <div class="brand"><span class="brand-mark">${icon("shield")}</span><span>SafeTab</span></div>
+      <h1>Calm, transparent tablet management for schools and families.</h1>
+      <p>Set app rules for school hours, see which tablets are protected, and keep parents in control.</p>
+      <ul class="auth-points">
+        <li>${icon("check")}<span>Apps switched off during school hours only</span></li>
+        <li>${icon("check")}<span>Parents agree before anything applies to their tablet</span></li>
+        <li>${icon("check")}<span>No messages, screens, cameras or locations — ever</span></li>
+      </ul>
+    </section>
+    <section class="auth-main"><div class="auth">${inner}</div></section>
+  </div>`;
+}
+
 function viewLogin() {
   sidebar.hidden = true;
-  app.innerHTML = `
-    <div class="auth-wrap"><div class="auth">
-      <div class="brand"><span class="brand-mark">${icon("shield")}</span><span>SafeTab</span></div>
-      <div class="card">
-        <div class="tabs" role="tablist">
-          <button type="button" role="tab" aria-selected="true" data-tab="signin">Sign in</button>
-          <button type="button" role="tab" aria-selected="false" data-tab="signup">Create account</button>
-        </div>
-        <form id="signin">
-          <label for="si-email">Email</label><input id="si-email" type="email" autocomplete="username" required>
-          <label for="si-pw">Password</label><input id="si-pw" type="password" autocomplete="current-password" required>
-          <div class="row"><button type="submit" class="full">Sign in ${icon("chevron")}</button></div>
-        </form>
-        <form id="signup" hidden>
-          <label for="su-name">Your name</label><input id="su-name" type="text" autocomplete="name" required maxlength="120">
-          <label for="su-email">Email</label><input id="su-email" type="email" autocomplete="username" required>
-          <label for="su-pw">Password <span class="muted small">· at least 12 characters</span></label>
-          <input id="su-pw" type="password" autocomplete="new-password" minlength="12" required>
-          <label for="su-kind">Account type</label>
-          <select id="su-kind"><option value="school">School / organization</option><option value="family">Family</option></select>
-          <label for="su-org">School or family name</label><input id="su-org" type="text" required maxlength="200">
-          <div class="row"><button type="submit" class="full">Create account ${icon("chevron")}</button></div>
-        </form>
+  app.innerHTML = authScreen(`
+      <h2>Welcome</h2>
+      <p class="muted small" style="margin:0">Sign in to your school or family workspace.</p>
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected="true" data-tab="signin">Sign in</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="signup">Create account</button>
       </div>
-      <p class="muted small" style="text-align:center">${icon("lock")} Transparent device management. No messages, screens, cameras or locations — ever.</p>
-    </div></div>`;
+      <form id="signin">
+        <label for="si-email">Email</label><input id="si-email" type="email" autocomplete="username" required>
+        <label for="si-pw">Password</label><input id="si-pw" type="password" autocomplete="current-password" required>
+        <div class="row"><button type="submit" class="full">Sign in</button></div>
+      </form>
+      <form id="signup" hidden>
+        <label for="su-name">Your name</label><input id="su-name" type="text" autocomplete="name" required maxlength="120">
+        <label for="su-email">Email</label><input id="su-email" type="email" autocomplete="username" required>
+        <label for="su-pw">Password <span class="muted small">· at least 12 characters</span></label>
+        <input id="su-pw" type="password" autocomplete="new-password" minlength="12" required>
+        <div class="row" style="margin-top:12px">
+          <select id="su-kind" aria-label="Account type" style="flex:1"><option value="school">School</option><option value="family">Family</option></select>
+          <input id="su-org" type="text" required maxlength="200" placeholder="School or family name" aria-label="School or family name" style="flex:2;min-width:160px">
+        </div>
+        <div class="row"><button type="submit" class="full">Create account</button></div>
+      </form>
+      <p class="muted small auth-foot">Parents: use the invitation link your school sent you.</p>`);
   app.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => {
     app.querySelectorAll("[data-tab]").forEach((x) => x.setAttribute("aria-selected", String(x === b)));
     app.querySelector("#signin").hidden = b.dataset.tab !== "signin";
@@ -462,6 +473,9 @@ async function viewStudent(studentId) {
       ${isSchool() ? `<section class="card">
         ${section("clock", "School hours", h(shTz))}
         <p class="muted small" style="margin-top:0">Apps switched off during these hours only — not deleted. These are the only rules that apply to parent-owned tablets. Changing them asks parents to agree again.</p>
+        ${consent.hasRules
+          ? `<div class="notice info" style="background:var(--ok-bg);color:var(--ok)">${icon("check")}<span>Saved and ready. Parents can now review and agree to these rules.</span></div>`
+          : `<div class="notice">${icon("alert")}<span><strong>Parents can't agree yet.</strong> Turn the switch on, add at least one app, then click <strong>Save rules</strong>.</span></div>`}
         <label class="switch"><input type="checkbox" id="sh-on" ${spec.schoolHours.enabled ? "checked" : ""}> Switch off apps during school hours</label>
         <div class="days">${DAYS.map((d, i) => `<label><input type="checkbox" data-sday="${i + 1}" ${shWin.days.includes(i + 1) ? "checked" : ""}><span>${d}</span></label>`).join("")}</div>
         <div class="row">
@@ -600,7 +614,7 @@ function renderGuardianStudent(studentId, student, policy, consent) {
         <p class="muted small">During these hours these apps are switched off (not deleted):</p>
         <div class="row" style="margin-top:6px">${sh.blockedApps.map((p) => `<span class="badge">${h(appName(p))}</span>`).join("")}</div>
         <p class="muted small">Outside these hours the school does not restrict the tablet. The school can't see messages, photos, files, screens, location, browsing history or which apps are used.</p>`
-        : `<p class="muted">The school hasn't set any school-hours rules yet, so there is nothing to agree to.</p>`}
+        : `<div class="notice">${icon("info")}<span><strong>Nothing to agree to yet.</strong> The school hasn't saved any school-hours rules for ${h(student.display_name)}. Once it does, refresh this page and the consent form appears here.</span></div>`}
     </section>
 
     <section class="card">
@@ -612,7 +626,7 @@ function renderGuardianStudent(studentId, student, policy, consent) {
       ${canAgree ? `<form id="consent-form">
         <label for="sig">Type your full name to sign</label>
         <input type="text" id="sig" required minlength="2" maxlength="120" autocomplete="name">
-        <label class="switch"><input type="checkbox" id="agree" required> <span>I have read this and I agree</span></label>
+        <label class="agree"><input type="checkbox" id="agree" required> <span>I have read this and I agree</span></label>
         <div class="row"><button type="submit">${icon("check")} I agree</button></div>
       </form>` : ""}
       ${consent.status === "active" ? `<div class="row"><button type="button" class="danger" data-action="withdraw">${icon("ban")} Withdraw consent</button>
@@ -704,31 +718,26 @@ async function viewPrivacy() {
 function viewInvite(inviteToken) {
   sidebar.hidden = true;
   const signedIn = !!store.get("st_token");
-  app.innerHTML = `
-    <div class="auth-wrap"><div class="auth">
-      <div class="brand"><span class="brand-mark">${icon("shield")}</span><span>SafeTab</span></div>
-      <div class="card">
-        <h2 style="margin-bottom:6px">You've been invited</h2>
-        <p class="muted small" style="margin-top:0">Accept to see your child's school-hours rules and choose whether to agree. Nothing changes on the tablet until you agree.</p>
-        ${signedIn ? `<div class="row"><button type="button" class="full" data-action="accept-signed-in">${icon("check")} Accept invitation</button></div>` : `
-        <div class="tabs" role="tablist">
-          <button type="button" role="tab" aria-selected="true" data-tab="new">Create my account</button>
-          <button type="button" role="tab" aria-selected="false" data-tab="existing">I already have an account</button>
-        </div>
-        <form id="inv-new">
-          <label for="inv-name">Your full name</label><input id="inv-name" type="text" autocomplete="name" required maxlength="120">
-          <label for="inv-pw">Choose a password <span class="muted small">· at least 12 characters</span></label>
-          <input id="inv-pw" type="password" autocomplete="new-password" minlength="12" required>
-          <p class="muted small">Your account uses the email address the invitation was sent to.</p>
-          <div class="row"><button type="submit" class="full">Create account & accept</button></div>
-        </form>
-        <form id="inv-existing" hidden>
-          <label for="inv-email">Email</label><input id="inv-email" type="email" autocomplete="username" required>
-          <label for="inv-pw2">Password</label><input id="inv-pw2" type="password" autocomplete="current-password" required>
-          <div class="row"><button type="submit" class="full">Sign in & accept</button></div>
-        </form>`}
+  app.innerHTML = authScreen(`
+      <h2>You've been invited</h2>
+      <p class="muted small" style="margin:0">Accept to see your child's school-hours rules and choose whether to agree. Nothing changes on the tablet until you agree.</p>
+      ${signedIn ? `<div class="row"><button type="button" class="full" data-action="accept-signed-in">${icon("check")} Accept invitation</button></div>` : `
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" aria-selected="true" data-tab="new">New account</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="existing">I have an account</button>
       </div>
-    </div></div>`;
+      <form id="inv-new">
+        <label for="inv-name">Your full name</label><input id="inv-name" type="text" autocomplete="name" required maxlength="120">
+        <label for="inv-pw">Choose a password <span class="muted small">· at least 12 characters</span></label>
+        <input id="inv-pw" type="password" autocomplete="new-password" minlength="12" required>
+        <p class="muted small" style="margin:8px 0 0">Your account uses the email address the invitation was sent to.</p>
+        <div class="row"><button type="submit" class="full">Create account & accept</button></div>
+      </form>
+      <form id="inv-existing" hidden>
+        <label for="inv-email">Email</label><input id="inv-email" type="email" autocomplete="username" required>
+        <label for="inv-pw2">Password</label><input id="inv-pw2" type="password" autocomplete="current-password" required>
+        <div class="row"><button type="submit" class="full">Sign in & accept</button></div>
+      </form>`}`);
 
   const finish = async (r) => {
     if (r.token) store.set("st_token", r.token);
