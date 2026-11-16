@@ -23,7 +23,11 @@ describe("portal", () => {
     expect(page.headers["content-type"]).toMatch(/text\/html/);
     expect(page.body).toContain('<script src="/landing.js">');
     expect(page.body).toContain("Paystack");
-    expect(String(page.headers["content-security-policy"])).toMatch(/script-src 'self'/);
+    const csp = String(page.headers["content-security-policy"]);
+    // Only Paystack's official pop-up script and checkout frame are allowed besides our own files.
+    expect(csp).toMatch(/script-src 'self' https:\/\/js\.paystack\.co;/);
+    expect(csp).toMatch(/frame-src [^;]*https:\/\/checkout\.paystack\.com/);
+    expect(csp).toMatch(/object-src 'none'/);
     const portal = await t.app.inject({ method: "GET", url: "/app" });
     expect(portal.body).toContain('<script src="/app.js">');
     for (const f of ["/app.js", "/landing.js"]) expect((await t.app.inject({ method: "GET", url: f })).headers["content-type"]).toMatch(/javascript/);

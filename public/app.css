@@ -275,3 +275,4 @@ tr:last-child td { border-bottom: none; }
 main:has(.auth-screen) { max-width: none; padding: 0; }
 .agree { display: flex; align-items: center; gap: 10px; font-weight: 600; margin: 14px 0 0; cursor: pointer; }
 .agree input { width: 20px; height: 20px; accent-color: var(--accent); margin: 0; }
+#flash.info { color: var(--accent); border-color: var(--accent); }

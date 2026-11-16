@@ -51,6 +51,9 @@ describe("checkout and verification", () => {
     reference = r.json().reference;
     const sent = t.paystack.initialized.at(-1);
     expect(sent).toMatchObject({ amount: 500, currency: "USD", plan: "PLN_test_individual", reference, metadata: { org_id: fam.orgId } });
+    // The pop-up is opened with Paystack's access code; the full-page URL is the fallback.
+    expect(r.json()).toMatchObject({ accessCode: "ac_test", plan: "individual", amount: 500, currency: "USD" });
+    expect(r.json().authorizationUrl).toMatch(/^https:\/\//);
   });
 
   it("does not activate when Paystack reports a different amount", async () => {

@@ -81,14 +81,17 @@ const ERRORS = {
   no_school_hours_rules_to_consent_to: "The school hasn't set school-hours rules yet, so there is nothing to agree to.",
   no_active_consent: "There is no active consent to withdraw.",
   member_limit_reached: "This organization has reached its staff limit.",
+  payments_not_configured: "Paystack isn't set up yet: add your Paystack secret key and plan codes to the .env file, then restart SafeTab.",
+  paystack_unavailable: "Couldn't reach Paystack. Check your internet connection and try again.",
+  already_active: "Your plan is already active.",
 };
 
 let flashTimer;
 function flash(msg, kind = "error") {
   flashEl.className = kind;
-  flashEl.innerHTML = `${icon(kind === "success" ? "check" : "alert")} ${h(msg)}`;
+  flashEl.innerHTML = `${icon(kind === "success" ? "check" : kind === "info" ? "info" : "alert")} ${h(msg)}`;
   clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => (flashEl.innerHTML = ""), kind === "success" ? 4000 : 9000);
+  flashTimer = setTimeout(() => (flashEl.innerHTML = ""), kind === "error" ? 9000 : 5000);
 }
 
 async function api(method, path, body) {
@@ -198,6 +201,10 @@ function viewLogin(opts = {}) {
     app.querySelector("#signin").hidden = b.dataset.tab !== "signin";
     app.querySelector("#signup").hidden = b.dataset.tab !== "signup";
   }));
+  if (opts.paying) {
+    app.querySelector(".auth h2").insertAdjacentHTML("afterend",
+      `<div class="notice info" style="margin-top:12px">${icon("card")}<span>Create your account or sign in — the <strong>Paystack</strong> payment window opens right after.</span></div>`);
+  }
   // Links from the product page: /app#/signup/school or /app#/signup/family
   if (opts.signup) {
     app.querySelector("[data-tab=signup]").click();
@@ -208,8 +215,7 @@ function viewLogin(opts = {}) {
     busy(e.submitter, async () => {
       const r = await api("POST", "/v1/auth/login", { email: val("#si-email"), password: val("#si-pw") });
       store.set("st_token", r.token);
-      location.hash = "#/";
-      await route();
+      await afterAuth();
     });
   });
   app.querySelector("#signup").addEventListener("submit", (e) => {
@@ -222,8 +228,7 @@ function viewLogin(opts = {}) {
       store.set("st_token", r.token);
       store.set("st_org", r.orgId);
       flash("Account created.", "success");
-      location.hash = "#/";
-      await route();
+      await afterAuth();
     });
   });
 }
@@ -329,11 +334,7 @@ async function viewHome() {
       </form><p class="muted small">A nickname is fine — SafeTab never needs a full name or date of birth.</p>` : ""}
     </section>`;
 
-  on("[data-action=subscribe]", "click", (e) => busy(e.currentTarget, async () => {
-    // The server creates the payment with Paystack; the amount comes from server config.
-    const r = await api("POST", orgPath("/billing/checkout"));
-    location.href = r.authorizationUrl;
-  }));
+  on("[data-action=subscribe]", "click", (e) => busy(e.currentTarget, () => startCheckout()));
   on("[data-action=pilot-activate]", "click", (e) => busy(e.currentTarget, async () => {
     await api("POST", orgPath("/billing/pilot-activate"));
     flash("Pilot activated for 30 days.", "success");
@@ -790,6 +791,86 @@ function viewInvite(inviteToken) {
   });
 }
 
+async function afterAuth() {
+  const next = store.get("st_next");
+  store.set("st_next", null);
+  state.org = null;
+  const target = next || "#/";
+  if (target !== location.hash) location.hash = target; // hashchange re-renders
+  else await route();
+}
+
+/** Loads Paystack's official pop-up script (InlineJS v2) once. Resolves false on failure. */
+let paystackLoading;
+function loadPaystack() {
+  if (window.PaystackPop) return Promise.resolve(true);
+  paystackLoading ??= new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "https://js.paystack.co/v2/inline.js";
+    s.async = true;
+    const timer = setTimeout(() => resolve(false), 10000);
+    s.onload = () => { clearTimeout(timer); resolve(!!window.PaystackPop); };
+    s.onerror = () => { clearTimeout(timer); resolve(false); };
+    document.head.appendChild(s);
+  }).then((ok) => { if (!ok) paystackLoading = undefined; return ok; });
+  return paystackLoading;
+}
+
+/**
+ * Starts payment: the server creates the Paystack transaction (amount and plan come from
+ * server config), then Paystack's pop-up opens over the page. If the pop-up can't load,
+ * fall back to Paystack's full-page checkout. Payment is only trusted after the server
+ * verifies it with Paystack (billing return screen + webhook).
+ */
+async function startCheckout() {
+  flashEl.innerHTML = "";
+  const r = await api("POST", orgPath("/billing/checkout"));
+  const ok = await loadPaystack();
+  if (!ok) { location.href = r.authorizationUrl; return; }
+  try {
+    const popup = new window.PaystackPop();
+    popup.resumeTransaction(r.accessCode, {
+      onSuccess: () => { flashEl.innerHTML = ""; location.hash = `#/billing/return/${r.reference}`; },
+      onCancel: () => flash("Payment window closed. No payment was taken — you can try again any time.", "info"),
+      onError: () => { location.href = r.authorizationUrl; },
+    });
+  } catch {
+    location.href = r.authorizationUrl;
+  }
+}
+
+async function viewSubscribe() {
+  setActiveNav("home");
+  if (!isAdmin()) {
+    app.innerHTML = `<section class="card" style="max-width:520px;margin:40px auto;text-align:center"><h2>Only an admin can manage billing</h2>
+      <p class="muted">Ask your organization's admin to subscribe.</p><div class="row" style="justify-content:center"><a class="button" href="#/">Go to Home</a></div></section>`;
+    return;
+  }
+  const billing = await api("GET", orgPath("/billing"));
+  const wanted = store.get("st_want_plan");
+  store.set("st_want_plan", null);
+  const planName = billing.plan === "organization" ? "Organization" : "Individual";
+  const active = billing.access === "full" && billing.status === "active";
+  const mismatch = wanted && wanted !== billing.plan;
+  app.innerHTML = `
+    <section class="card" style="max-width:560px;margin:32px auto">
+      ${section("card", `${planName} plan`, "billed monthly")}
+      <p style="font-size:2.4rem;font-weight:800;margin:4px 0 2px;letter-spacing:-.02em">${h(money(billing.price.amount, billing.price.currency))}<span class="muted" style="font-size:1rem;font-weight:600"> / month</span></p>
+      <p class="muted small">Up to ${h(billing.limits.students)} ${billing.plan === "organization" ? "students" : "children"} and ${h(billing.limits.devices)} tablets.</p>
+      ${mismatch ? `<div class="notice info">${icon("info")}<span>Your workspace is a ${state.org.kind === "school" ? "school" : "family"} workspace, so the <strong>${planName}</strong> plan applies.</span></div>` : ""}
+      ${active
+        ? `<div class="notice" style="background:var(--ok-bg);color:var(--ok)">${icon("check")}<span>Your plan is already active until ${h(fmtDay(billing.currentPeriodEnd))}.</span></div>
+           <div class="row"><a class="button" href="#/">Go to Home</a></div>`
+        : `<div class="row"><button type="button" class="full" data-action="pay">${icon("lock")} Pay ${h(money(billing.price.amount, billing.price.currency))} with Paystack</button></div>
+           <p class="muted small" style="text-align:center;margin-top:10px">You pay in Paystack's secure window — SafeTab never sees your card details.</p>`}
+    </section>`;
+  if (!active) {
+    const btn = app.querySelector("[data-action=pay]");
+    btn.addEventListener("click", () => busy(btn, () => startCheckout()));
+    busy(btn, () => startCheckout()); // open the Paystack window straight away
+  }
+}
+
 async function viewBillingReturn(reference) {
   setActiveNav("home");
   app.innerHTML = `<section class="card" style="max-width:520px;margin:40px auto;text-align:center">
@@ -818,6 +899,14 @@ async function route() {
   if (hash === "#/login") return viewLogin();
   const su = /^#\/signup(?:\/(school|family))?$/.exec(hash);
   if (su) return viewLogin({ signup: true, kind: su[1] });
+  // Plan buttons on the product page: /app#/subscribe/family or /app#/subscribe/school
+  const pick = /^#\/subscribe\/(school|family)$/.exec(hash);
+  if (pick) {
+    store.set("st_want_plan", pick[1] === "school" ? "organization" : "individual");
+    store.set("st_next", "#/subscribe");
+    if (state.org || (await loadSession())) { location.hash = "#/subscribe"; return; }
+    return viewLogin({ signup: true, kind: pick[1], paying: true });
+  }
   const invite = /^#\/invite\/([A-Za-z0-9_-]{20,200})$/.exec(hash);
   if (invite) return viewInvite(invite[1]);
   if (!state.org && !(await loadSession())) return viewLogin();
@@ -826,6 +915,7 @@ async function route() {
     if (m) return await viewStudent(m[1]);
     const br = /^#\/billing\/return\/(st_[0-9a-f]{32})$/.exec(hash);
     if (br) return await viewBillingReturn(br[1]);
+    if (hash === "#/subscribe") return await viewSubscribe();
     if (hash === "#/audit") return await viewAudit();
     if (hash === "#/privacy") return await viewPrivacy();
     return await viewHome();

@@ -54,7 +54,16 @@ export async function buildApp(deps: Deps): Promise<FastifyInstance> {
   });
 
   app.decorate("deps", deps);
-  await app.register(helmet);
+  await app.register(helmet, {
+    contentSecurityPolicy: {
+      // Defaults stay on; only Paystack's checkout pop-up is added (script + iframe).
+      directives: {
+        "script-src": ["'self'", "https://js.paystack.co"],
+        "frame-src": ["'self'", "https://checkout.paystack.com", "https://*.paystack.co", "https://*.paystack.com"],
+        "connect-src": ["'self'", "https://api.paystack.co"],
+      },
+    },
+  });
   await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
 
   app.decorate("sessionUser", async (req: FastifyRequest) => {
