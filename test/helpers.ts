@@ -5,7 +5,7 @@ import { buildApp } from "../src/app.js";
 import { migrate } from "../src/db/migrate.js";
 import { closePool } from "../src/db/pool.js";
 import { FakeMdmProvider } from "../src/mdm/fake.js";
-import type { PaystackClient, PaystackTransaction } from "../src/billing/paystack.js";
+import { PaystackRejectedError, type PaystackClient, type PaystackTransaction } from "../src/billing/paystack.js";
 
 export const OWNER_URL = process.env.DATABASE_OWNER_URL!;
 
@@ -22,7 +22,13 @@ export class FakePaystack implements PaystackClient {
   transactions = new Map<string, PaystackTransaction>();
   initialized: any[] = [];
   disabled: string[] = [];
+  rejectNextInit?: string;
   async initialize(body: any) {
+    if (this.rejectNextInit) {
+      const msg = this.rejectNextInit;
+      this.rejectNextInit = undefined;
+      throw new PaystackRejectedError(403, msg);
+    }
     this.initialized.push(body);
     return { authorization_url: `https://checkout.paystack.test/${body.reference}`, access_code: "ac_test", reference: body.reference };
   }

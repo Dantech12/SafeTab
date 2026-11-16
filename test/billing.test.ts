@@ -56,6 +56,16 @@ describe("checkout and verification", () => {
     expect(r.json().authorizationUrl).toMatch(/^https:\/\//);
   });
 
+  it("passes Paystack's refusal reason (e.g. unsupported currency) to the admin", async () => {
+    t.paystack.rejectNextInit = "Currency not supported by merchant";
+    const r = await t.app.inject({ method: "POST", url: `/v1/orgs/${school.orgId}/billing/checkout`, headers: auth(school.token) });
+    expect(r.statusCode).toBe(502);
+    expect(r.json()).toEqual({ error: "paystack_rejected", detail: "Currency not supported by merchant" });
+    // Nothing is recorded for a checkout Paystack refused.
+    const rows = await ownerQuery("SELECT count(*) FROM payments WHERE org_id = $1", [school.orgId]);
+    expect(Number(rows.rows[0].count)).toBe(0);
+  });
+
   it("does not activate when Paystack reports a different amount", async () => {
     t.paystack.transactions.set(reference, { status: "success", reference, amount: 100, currency: "USD", metadata: { org_id: fam.orgId } });
     const r = await t.app.inject({ method: "POST", url: `/v1/orgs/${fam.orgId}/billing/verify`, headers: auth(fam.token), payload: { reference } });
