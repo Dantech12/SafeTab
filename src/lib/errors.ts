@@ -1,5 +1,6 @@
 export class HttpError extends Error {
-  constructor(public status: number, public code: string, message?: string) {
+  /** `detail` is a short, non-sensitive explanation that is safe to show to the user. */
+  constructor(public status: number, public code: string, message?: string, public detail?: string) {
     super(message ?? code);
   }
 }

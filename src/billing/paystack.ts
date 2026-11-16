@@ -26,6 +26,13 @@ export interface PaystackTransaction {
   plan?: unknown;
 }
 
+/** Paystack answered, but refused the request (bad key, unsupported currency, unknown plan...). */
+export class PaystackRejectedError extends Error {
+  constructor(public status: number, public paystackMessage: string) {
+    super(`paystack rejected request: ${status} ${paystackMessage}`.trim());
+  }
+}
+
 export class HttpPaystackClient implements PaystackClient {
   constructor(private secretKey: string, private baseUrl: string, private fetchImpl: typeof fetch = fetch) {}
 
@@ -38,7 +45,7 @@ export class HttpPaystackClient implements PaystackClient {
     });
     const json = (await res.json().catch(() => ({}))) as { status?: boolean; message?: string; data?: T };
     if (!res.ok || json.status !== true) {
-      throw new Error(`paystack ${path} failed: ${res.status} ${json.message ?? ""}`.trim());
+      throw new PaystackRejectedError(res.status, String(json.message ?? "").slice(0, 200));
     }
     return json.data as T;
   }

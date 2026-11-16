@@ -89,7 +89,7 @@ export async function buildApp(deps: Deps): Promise<FastifyInstance> {
   });
 
   app.setErrorHandler((err, req, reply) => {
-    if (err instanceof HttpError) return reply.status(err.status).send({ error: err.code });
+    if (err instanceof HttpError) return reply.status(err.status).send({ error: err.code, ...(err.detail ? { detail: err.detail } : {}) });
     if (err instanceof ZodError) {
       return reply.status(400).send({
         error: "validation_failed",

@@ -8,6 +8,7 @@ import { config } from "../config.js";
 import { HttpError } from "../lib/errors.js";
 import { accessLevel, effectiveStatus, PLAN_LIMITS, type Plan } from "../billing/entitlements.js";
 import { confirmPayment, planPricing } from "../billing/service.js";
+import { PaystackRejectedError } from "../billing/paystack.js";
 
 export async function billingRoutes(app: FastifyInstance) {
   const { deps } = app;
@@ -57,6 +58,11 @@ export async function billingRoutes(app: FastifyInstance) {
         });
       } catch (e) {
         req.log.warn({ err: e instanceof Error ? e.message : String(e) }, "paystack initialize failed");
+        if (e instanceof PaystackRejectedError) {
+          // Paystack's own reason (e.g. "Invalid key", "Currency not supported by merchant")
+          // contains no secrets and tells the admin exactly what to fix.
+          throw new HttpError(502, "paystack_rejected", undefined, e.paystackMessage || `HTTP ${e.status}`);
+        }
         throw new HttpError(502, "paystack_unavailable");
       }
       await audit(tx, { actorType: "user", actorId: ctx.userId, action: "billing.checkout_started", targetType: "payment", targetId: reference, ip: ctx.ip });

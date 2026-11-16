@@ -94,6 +94,17 @@ function flash(msg, kind = "error") {
   flashTimer = setTimeout(() => (flashEl.innerHTML = ""), kind === "error" ? 9000 : 5000);
 }
 
+/** Turns Paystack's refusal reason into a plain next step for the admin. */
+function paystackHelp(reason) {
+  const r = reason.toLowerCase();
+  let fix = "Check the Paystack settings in your .env file, then restart SafeTab.";
+  if (r.includes("key")) fix = "Your Paystack secret key in .env looks wrong. Copy the TEST secret key (sk_test_…) again, with no spaces, then restart SafeTab.";
+  else if (r.includes("currency")) fix = "Your Paystack account can't charge in this currency. Set BILLING_CURRENCY in .env to a currency your account supports, and create the plans in that currency.";
+  else if (r.includes("plan")) fix = "A plan code in .env is wrong, or it was created in a different mode (test vs live) from your secret key. Copy both PLN_ codes again.";
+  else if (r.includes("email")) fix = "Paystack didn't accept your account's email address.";
+  return `Paystack said: “${reason}”. ${fix}`;
+}
+
 async function api(method, path, body) {
   const res = await fetch(path, {
     method,
@@ -108,6 +119,7 @@ async function api(method, path, body) {
   }
   if (!res.ok) {
     const issues = (json.issues || []).map((i) => `${i.path || "value"}: ${i.message}`).join("; ");
+    if (json.error === "paystack_rejected") throw new Error(paystackHelp(json.detail || ""));
     throw new Error(ERRORS[json.error] || issues || json.error || `Request failed (${res.status})`);
   }
   return json;
