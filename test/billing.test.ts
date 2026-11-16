@@ -30,13 +30,13 @@ const hook = (body: unknown, sign = true) => {
 const billing = async (s: typeof fam) => (await t.app.inject({ method: "GET", url: `/v1/orgs/${s.orgId}/billing`, headers: auth(s.token) })).json();
 
 describe("plans", () => {
-  it("prices come from server config: $5 individual, $30 organization", async () => {
+  it("prices come from server config: $5 individual, $20 organization", async () => {
     const f = await billing(fam);
     const s = await billing(school);
     expect(f.plan).toBe("individual");
     expect(f.price).toEqual({ amount: 500, currency: "USD", interval: "monthly" });
     expect(s.plan).toBe("organization");
-    expect(s.price.amount).toBe(3000);
+    expect(s.price.amount).toBe(2000);
     expect(f.status).toBe("none");
     expect(f.access).toBe("read_only");
   });

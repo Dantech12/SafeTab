@@ -12,6 +12,10 @@ SafeTab uses only official platform features: Android Enterprise via the Android
 
 ➡️ **Students' own (parent-owned) tablets:** [`docs/PARENT_OWNED_TABLETS.md`](docs/PARENT_OWNED_TABLETS.md)
 
+> **Status (Nov 2026):** real-device enrollment is **paused**. Google requires approval for this Cloud project (its default enrollment limit blocked our first tablet), and the approval form needs a DUNS number, which we don't have yet. Everything else runs locally. Until then, the free alternatives below cover the school's goal.
+>
+> ➡️ **Free alternatives that work today:** [`docs/guides/parents-family-link.md`](docs/guides/parents-family-link.md) (for parents) · [`docs/guides/school-wifi-filtering.md`](docs/guides/school-wifi-filtering.md) (for the school's IT person)
+
 > Pilot backend, **not production-ready**. It still needs real-device validation, a security review, and a privacy/legal review. The open items are listed in the guide.
 
 ## Stack
@@ -23,7 +27,7 @@ cp .env.example .env            # sample values only; use Paystack *test* keys
 docker compose up -d db         # Postgres 16 + non-owner app role (db/dev-init.sql)
 npm install
 DATABASE_OWNER_URL=postgres://safetab:safetab_dev_only@localhost:5432/safetab npm run migrate
-npm run dev                     # then open http://localhost:3000 (portal); MDM_PROVIDER=fake touches no real devices
+npm run dev                     # product page: http://localhost:3000 · portal: http://localhost:3000/app
 ```
 
 ## Tests

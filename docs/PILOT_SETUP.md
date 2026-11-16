@@ -61,7 +61,7 @@ npm run dev
 Leave this window open. It runs the server and the background jobs (device status checks every 5 minutes). `npm run worker` is only needed for production setups.
 
 ## 5. Use the portal
-Open **http://localhost:3000** in your browser.
+Open **http://localhost:3000/app** in your browser. (The public product page with pricing is at **http://localhost:3000**.)
 1. **Create account** (or sign in).
 2. On **Home → Setup**:
    - **Activate pilot**: 30 days, no payment. Local pilot only.

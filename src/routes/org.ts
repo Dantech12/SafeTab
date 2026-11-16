@@ -85,7 +85,7 @@ export async function orgRoutes(app: FastifyInstance) {
       await audit(tx, { actorType: "user", actorId: ctx.userId, action: "invitation.created", targetType: "invitation", targetId: r.rows[0].id, metadata: { role: body.role, studentId: body.studentId ?? null }, ip: ctx.ip });
       // In production the link is emailed to the invitee only and NOT returned to the
       // inviter. Returned here so the flow is testable before email delivery exists.
-      const acceptUrl = `${config().PUBLIC_BASE_URL}/#/invite/${token}`;
+      const acceptUrl = `${config().PUBLIC_BASE_URL}/app#/invite/${token}`;
       return reply.status(201).send({ id: r.rows[0].id, expiresAt: r.rows[0].expires_at, ...(config().NODE_ENV !== "production" ? { acceptUrl, token } : {}) });
     });
   });

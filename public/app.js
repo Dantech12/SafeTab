@@ -45,6 +45,10 @@ document.querySelectorAll("[data-icon]").forEach((el) => (el.innerHTML = icon(el
 const h = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
 const fmtDay = (v) => (v ? new Date(v).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—");
+const money = (subunits, currency) => {
+  try { return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: subunits % 100 ? 2 : 0 }).format(subunits / 100); }
+  catch { return `${currency} ${(subunits / 100).toFixed(2)}`; }
+};
 const isAdmin = () => state.org?.myRole === "org_admin";
 const initials = (name) => String(name || "?").trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() || "").join("") || "?";
 const AVATAR_GRADS = ["#1d4ed8", "#2563eb", "#1e40af", "#3b82f6", "#1e3a8a", "#0369a1"];
@@ -163,7 +167,7 @@ function authScreen(inner) {
   </div>`;
 }
 
-function viewLogin() {
+function viewLogin(opts = {}) {
   sidebar.hidden = true;
   app.innerHTML = authScreen(`
       <h2>Welcome</h2>
@@ -194,6 +198,11 @@ function viewLogin() {
     app.querySelector("#signin").hidden = b.dataset.tab !== "signin";
     app.querySelector("#signup").hidden = b.dataset.tab !== "signup";
   }));
+  // Links from the product page: /app#/signup/school or /app#/signup/family
+  if (opts.signup) {
+    app.querySelector("[data-tab=signup]").click();
+    if (opts.kind) app.querySelector("#su-kind").value = opts.kind;
+  }
   app.querySelector("#signin").addEventListener("submit", (e) => {
     e.preventDefault();
     busy(e.submitter, async () => {
@@ -265,8 +274,11 @@ async function viewHome() {
 
   const billingBody = !billing ? "" : planOk
     ? `<span class="muted">Active until ${h(fmtDay(billing.currentPeriodEnd))}.</span>`
-    : `<span class="muted">Needed before adding tablets or changing rules.</span>
-       ${state.org.pilotMode ? `<div class="row"><button type="button" data-action="pilot-activate">${icon("rocket")} Activate pilot · 30 days, no payment</button></div>` : ""}`;
+    : `<span class="muted">Needed before adding tablets or changing rules. ${h(billing.plan === "organization" ? "Organization" : "Individual")} plan: <strong>${h(money(billing.price.amount, billing.price.currency))}/month</strong>.</span>
+       <div class="row">
+         <button type="button" data-action="subscribe">${icon("card")} Subscribe with Paystack</button>
+         ${state.org.pilotMode ? `<button type="button" class="secondary" data-action="pilot-activate">${icon("rocket")} Activate pilot · 30 days, no payment</button>` : ""}
+       </div>`;
 
   const androidBody = android.connected
     ? `<span class="muted">Connected · <code>${h(android.enterpriseName)}</code></span>`
@@ -317,6 +329,11 @@ async function viewHome() {
       </form><p class="muted small">A nickname is fine — SafeTab never needs a full name or date of birth.</p>` : ""}
     </section>`;
 
+  on("[data-action=subscribe]", "click", (e) => busy(e.currentTarget, async () => {
+    // The server creates the payment with Paystack; the amount comes from server config.
+    const r = await api("POST", orgPath("/billing/checkout"));
+    location.href = r.authorizationUrl;
+  }));
   on("[data-action=pilot-activate]", "click", (e) => busy(e.currentTarget, async () => {
     await api("POST", orgPath("/billing/pilot-activate"));
     flash("Pilot activated for 30 days.", "success");
@@ -773,18 +790,42 @@ function viewInvite(inviteToken) {
   });
 }
 
+async function viewBillingReturn(reference) {
+  setActiveNav("home");
+  app.innerHTML = `<section class="card" style="max-width:520px;margin:40px auto;text-align:center">
+    <div class="loader" style="margin:20px auto"></div><h2>Confirming your payment with Paystack…</h2></section>`;
+  // Paystack's redirect proves nothing by itself; the server asks Paystack directly.
+  let result;
+  try { result = (await api("POST", orgPath("/billing/verify"), { reference })).result; } catch (e) { result = "error"; }
+  const view = {
+    success: ["ok", "check", "Payment confirmed", "Your plan is active. Thank you!"],
+    pending: ["warn", "clock", "Payment still processing", "Paystack hasn't confirmed it yet. Refresh this page in a minute; we also confirm automatically when Paystack notifies us."],
+    failed: ["bad", "alert", "Payment not completed", "No money was taken for this attempt. You can try again from the Home page."],
+    mismatch: ["bad", "alert", "We couldn't match this payment", "Please contact support with the time of your payment."],
+    error: ["bad", "alert", "We couldn't check this payment", "Please try again in a moment."],
+  }[result] || ["bad", "alert", "Unknown result", ""];
+  app.innerHTML = `<section class="card" style="max-width:520px;margin:40px auto;text-align:center">
+    <span class="icon-tile ${view[0]}" style="width:56px;height:56px;margin:0 auto 12px">${icon(view[1])}</span>
+    <h2>${h(view[2])}</h2><p class="muted">${h(view[3])}</p>
+    <div class="row" style="justify-content:center"><a class="button" href="#/">Go to Home</a></div></section>`;
+}
+
 // ---------- router ----------
 function on(sel, evt, fn) { app.querySelectorAll(sel).forEach((el) => el.addEventListener(evt, fn)); }
 
 async function route() {
   const hash = location.hash || "#/";
   if (hash === "#/login") return viewLogin();
+  const su = /^#\/signup(?:\/(school|family))?$/.exec(hash);
+  if (su) return viewLogin({ signup: true, kind: su[1] });
   const invite = /^#\/invite\/([A-Za-z0-9_-]{20,200})$/.exec(hash);
   if (invite) return viewInvite(invite[1]);
   if (!state.org && !(await loadSession())) return viewLogin();
   try {
     const m = /^#\/student\/([0-9a-f-]{36})$/i.exec(hash);
     if (m) return await viewStudent(m[1]);
+    const br = /^#\/billing\/return\/(st_[0-9a-f]{32})$/.exec(hash);
+    if (br) return await viewBillingReturn(br[1]);
     if (hash === "#/audit") return await viewAudit();
     if (hash === "#/privacy") return await viewPrivacy();
     return await viewHome();

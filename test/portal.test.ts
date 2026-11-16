@@ -17,15 +17,33 @@ afterAll(async () => {
 });
 
 describe("portal", () => {
-  it("serves the portal files with a strict same-origin script policy", async () => {
+  it("serves the product page at / and the portal at /app, with a strict script policy", async () => {
     const page = await t.app.inject({ method: "GET", url: "/" });
     expect(page.statusCode).toBe(200);
     expect(page.headers["content-type"]).toMatch(/text\/html/);
-    expect(page.body).toContain('<script src="/app.js">');
+    expect(page.body).toContain('<script src="/landing.js">');
+    expect(page.body).toContain("Paystack");
     expect(String(page.headers["content-security-policy"])).toMatch(/script-src 'self'/);
-    expect((await t.app.inject({ method: "GET", url: "/app.js" })).headers["content-type"]).toMatch(/javascript/);
-    expect((await t.app.inject({ method: "GET", url: "/app.css" })).statusCode).toBe(200);
+    const portal = await t.app.inject({ method: "GET", url: "/app" });
+    expect(portal.body).toContain('<script src="/app.js">');
+    for (const f of ["/app.js", "/landing.js"]) expect((await t.app.inject({ method: "GET", url: f })).headers["content-type"]).toMatch(/javascript/);
+    for (const f of ["/app.css", "/landing.css"]) expect((await t.app.inject({ method: "GET", url: f })).statusCode).toBe(200);
     expect((await t.app.inject({ method: "GET", url: "/../package.json" })).statusCode).toBe(404);
+  });
+
+  it("publishes prices from server config: $5 individual, $20 organization, via Paystack", async () => {
+    const r = (await t.app.inject({ method: "GET", url: "/v1/public/plans" })).json();
+    expect(r.paymentProvider).toBe("Paystack");
+    expect(r.currency).toBe("USD");
+    expect(r.plans.map((p: any) => [p.id, p.amount])).toEqual([["individual", 500], ["organization", 2000]]);
+  });
+
+  it("sends Paystack's return redirect to the portal's verification screen, ignoring junk", async () => {
+    const ok = await t.app.inject({ method: "GET", url: `/billing/return?ref=st_${"a".repeat(32)}` });
+    expect(ok.statusCode).toBe(302);
+    expect(ok.headers.location).toBe(`/app#/billing/return/st_${"a".repeat(32)}`);
+    const bad = await t.app.inject({ method: "GET", url: "/billing/return?ref=javascript:alert(1)" });
+    expect(bad.headers.location).toBe("/app");
   });
 
   it("exposes pilot mode and companion status on the org", async () => {
