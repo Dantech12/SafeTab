@@ -27,7 +27,7 @@ cp .env.example .env            # sample values only; use Paystack *test* keys
 docker compose up -d db         # Postgres 16 + non-owner app role (db/dev-init.sql)
 npm install
 DATABASE_OWNER_URL=postgres://safetab:safetab_dev_only@localhost:5432/safetab npm run migrate
-npm run dev                     # then open http://localhost:3000 (portal); MDM_PROVIDER=fake touches no real devices
+npm run dev                     # product page: http://localhost:3000 · portal: http://localhost:3000/app
 ```
 
 ## Tests

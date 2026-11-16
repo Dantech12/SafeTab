@@ -51,7 +51,7 @@ describe("parent invitation", () => {
 
   it("a parent joins and sees only their own child, read-only", async () => {
     const inv = (await t.app.inject({ method: "POST", url: url("/invitations"), headers: auth(school.token), payload: { email: "mum@family.test", role: "guardian", studentId } })).json();
-    expect(inv.acceptUrl).toContain("/#/invite/");
+    expect(inv.acceptUrl).toContain("/app#/invite/");
     const ok = await t.app.inject({ method: "POST", url: "/v1/invitations/accept", payload: { token: inv.token, password: "a long parent password", displayName: "Abena Mensah" } });
     expect(ok.statusCode).toBe(200);
     parentToken = ok.json().token;

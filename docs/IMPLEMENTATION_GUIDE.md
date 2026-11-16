@@ -113,7 +113,7 @@ An Individual subscriber is an org of kind `family`. A school is kind `school`. 
 6. Optional: they invite a second guardian as `supervisor`.
 
 **Organization (school)**
-1. The IT lead signs up (kind `school`), subscribes ($30/mo), and connects the Android Enterprise (AMAPI signup URL flow).
+1. The IT lead signs up (kind `school`), subscribes ($20/mo), and connects the Android Enterprise (AMAPI signup URL flow).
 2. They invite staff (an email-bound, single-use, 72 h invite) and assign students to each supervisor.
 3. They create student profiles. They enroll devices in bulk (one QR token per device slot) during imaging.
 4. They define policies per student. A later milestone could add policy templates per class.
@@ -255,7 +255,7 @@ Validation: domains only (no paths or queries), valid Android package names, IAN
 | Plan | Price (config) | Org kind | Default limits (to confirm) |
 |---|---|---|---|
 | Individual | `PLAN_INDIVIDUAL_AMOUNT=500` (USD 5.00/month) | family | 5 students, 5 devices, 2 adults |
-| Organization | `PLAN_ORGANIZATION_AMOUNT=3000` (USD 30.00/month) | school | 300 students, 300 devices, 30 adults |
+| Organization | `PLAN_ORGANIZATION_AMOUNT=2000` (USD 20.00/month) | school | 300 students, 300 devices, 30 adults |
 
 Amounts are in currency subunits. They and the Paystack plan codes live in env config. The client cannot choose an amount.
 
@@ -415,7 +415,7 @@ The app must show the notice from `/device/v1/notice` on its home screen, displa
 1. **Can AMAPI be used for the Individual (consumer/family) plan?** Review Google's Android Management API terms and permissible-use policy, and whether production use needs enrollment in the Android Enterprise partner program or quota approval. If consumer use is not permitted, the Individual plan on Android needs a different, compliant approach, or it launches for school-managed devices only.
 2. Deployment jurisdiction, lawful basis, and consent model (`[deployment jurisdiction]`).
 3. Paystack merchant country, currency (USD vs local), VAT, and refund policy.
-4. Final plan limits, and whether the Organization plan should be per device or tiered (USD 30 for 300 devices is a placeholder).
+4. Final plan limits, and whether the Organization plan should be per device or tiered (USD 20 for 300 devices is a placeholder).
 5. Retention defaults and the account-closure schedule after a lapse.
 6. Whether usage summaries are offered to schools at all, or only to families.
 7. BYOD/work-profile support and iOS support (separate scope).
