@@ -41,15 +41,28 @@ export async function billingRoutes(app: FastifyInstance) {
       if (accessLevel(sub, deps.now()) === "full" && sub.status === "active") throw new HttpError(409, "already_active");
       const plan = sub.plan as Plan; // family org => individual, school org => organization
       const { amount, currency, planCode } = planPricing(plan);
+      const key = config().PAYSTACK_SECRET_KEY;
+      if (/REPLACE_ME/.test(key) || /REPLACE_ME/.test(planCode)) {
+        // Sample values from .env.example: fail clearly instead of calling Paystack.
+        throw new HttpError(503, "payments_not_configured");
+      }
       await tx.query("INSERT INTO payments (reference, org_id, plan, amount, currency) VALUES ($1, app_current_org(), $2, $3, $4)",
         [reference, plan, amount, currency]);
-      const init = await deps.paystack.initialize({
-        email: user.email, amount, currency, plan: planCode, reference,
-        callback_url: `${config().PUBLIC_BASE_URL}/billing/return?ref=${reference}`,
-        metadata: { org_id: ctx.orgId, plan },
-      });
+      let init: Awaited<ReturnType<typeof deps.paystack.initialize>>;
+      try {
+        init = await deps.paystack.initialize({
+          email: user.email, amount, currency, plan: planCode, reference,
+          callback_url: `${config().PUBLIC_BASE_URL}/billing/return?ref=${reference}`,
+          metadata: { org_id: ctx.orgId, plan },
+        });
+      } catch (e) {
+        req.log.warn({ err: e instanceof Error ? e.message : String(e) }, "paystack initialize failed");
+        throw new HttpError(502, "paystack_unavailable");
+      }
       await audit(tx, { actorType: "user", actorId: ctx.userId, action: "billing.checkout_started", targetType: "payment", targetId: reference, ip: ctx.ip });
-      return { authorizationUrl: init.authorization_url, reference };
+      // accessCode opens Paystack's pop-up (InlineJS resumeTransaction); authorizationUrl
+      // is the full-page fallback. Neither lets the client change the amount or plan.
+      return { accessCode: init.access_code, authorizationUrl: init.authorization_url, reference, plan, amount, currency };
     });
   });
 
