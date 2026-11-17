@@ -46,7 +46,7 @@ const h = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<"
 const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
 const fmtDay = (v) => (v ? new Date(v).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—");
 const money = (subunits, currency) => {
-  try { return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: subunits % 100 ? 2 : 0 }).format(subunits / 100); }
+  try { return new Intl.NumberFormat("en-US", { style: "currency", currency, currencyDisplay: "narrowSymbol", maximumFractionDigits: subunits % 100 ? 2 : 0 }).format(subunits / 100); }
   catch { return `${currency} ${(subunits / 100).toFixed(2)}`; }
 };
 const isAdmin = () => state.org?.myRole === "org_admin";

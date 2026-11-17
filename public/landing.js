@@ -40,7 +40,7 @@ links?.querySelectorAll("a").forEach((a) => a.addEventListener("click", () => {
 // Prices and limits come from the server's billing configuration (static fallback in HTML).
 function money(subunits, currency) {
   try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: subunits % 100 ? 2 : 0 }).format(subunits / 100);
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, currencyDisplay: "narrowSymbol", maximumFractionDigits: subunits % 100 ? 2 : 0 }).format(subunits / 100);
   } catch {
     return `${currency} ${(subunits / 100).toFixed(2)}`;
   }

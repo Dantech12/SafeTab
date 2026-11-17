@@ -10,9 +10,9 @@ const Env = z.object({
 
   PAYSTACK_SECRET_KEY: z.string().min(1),
   PAYSTACK_BASE_URL: z.string().url().default("https://api.paystack.co"),
-  BILLING_CURRENCY: z.string().regex(/^[A-Z]{3}$/).default("USD"),
-  PLAN_INDIVIDUAL_AMOUNT: z.coerce.number().int().positive().default(500),
-  PLAN_ORGANIZATION_AMOUNT: z.coerce.number().int().positive().default(2000),
+  BILLING_CURRENCY: z.string().regex(/^[A-Z]{3}$/).default("GHS"),
+  PLAN_INDIVIDUAL_AMOUNT: z.coerce.number().int().positive().default(6000),
+  PLAN_ORGANIZATION_AMOUNT: z.coerce.number().int().positive().default(24000),
   PAYSTACK_PLAN_INDIVIDUAL: z.string().min(1),
   PAYSTACK_PLAN_ORGANIZATION: z.string().min(1),
   BILLING_GRACE_DAYS: z.coerce.number().int().min(0).max(30).default(7),

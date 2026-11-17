@@ -8,5 +8,7 @@ process.env.PAYSTACK_SECRET_KEY = "sk_test_dummy_for_unit_tests";
 process.env.PAYSTACK_PLAN_INDIVIDUAL = "PLN_test_individual";
 process.env.PAYSTACK_PLAN_ORGANIZATION = "PLN_test_organization";
 process.env.BILLING_CURRENCY = "USD";
+process.env.PLAN_INDIVIDUAL_AMOUNT = "500";
+process.env.PLAN_ORGANIZATION_AMOUNT = "2000";
 process.env.MDM_PROVIDER = "fake";
 process.env.COMPANION_APP_ENABLED = "true";
