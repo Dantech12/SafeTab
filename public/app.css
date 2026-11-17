@@ -295,3 +295,9 @@ main:has(.auth-screen) { max-width: none; padding: 0; }
 .plan-limits { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
 .plan-limits li { display: flex; gap: 10px; align-items: center; font-size: .94rem; }
 .plan-limits svg.i { color: var(--accent); }
+
+.paid-banner { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-radius: 14px; background: var(--ok-bg); color: var(--ok); }
+.paid-banner.wait { background: var(--accent-soft); color: var(--accent); }
+.paid-banner div { display: grid; }
+.paid-banner span { color: var(--text); font-size: .9rem; }
+.paid-banner svg.i { width: 22px; height: 22px; }

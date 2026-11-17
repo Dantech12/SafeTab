@@ -56,6 +56,10 @@ const avatar = (name, id, cls = "") => {
   const n = [...String(id || name)].reduce((a, c) => a + c.charCodeAt(0), 0);
   return `<span class="avatar ${cls}" style="background:${AVATAR_GRADS[n % AVATAR_GRADS.length]}">${h(initials(name))}</span>`;
 };
+const lstore = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* private mode */ } },
+};
 const store = {
   get(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch { /* private mode */ } },
@@ -88,6 +92,10 @@ const ERRORS = {
   oauth_code_expired: "That sign-in link has expired. Please sign in again.",
   workspace_limit_reached: "You've reached the maximum number of workspaces.",
   no_paystack_subscription: "There's no Paystack subscription on this workspace yet.",
+  purchase_plan_mismatch: "This payment is for a different kind of workspace.",
+  purchase_not_paid: "Paystack hasn't confirmed this payment yet.",
+  purchase_already_claimed: "This payment has already been added to a workspace.",
+  purchase_not_found: "We couldn't find that payment.",
 };
 
 let flashTimer;
@@ -303,6 +311,20 @@ function viewLogin(opts = {}) {
     app.querySelector("#signin").hidden = b.dataset.tab !== "signin";
     app.querySelector("#signup").hidden = b.dataset.tab !== "signup";
   }));
+  if (opts.claim) {
+    const c = opts.claim;
+    app.querySelector(".auth h2").outerHTML = c.status === "paid"
+      ? `<div class="paid-banner">${icon("check")}<div><strong>Payment received</strong><span>${h(c.plan === "organization" ? "Organization" : "Individual")} plan · ${h(money(c.amount, c.currency))}/month</span></div></div>
+         <h2 style="margin-top:14px">Create your account</h2>`
+      : `<div class="paid-banner wait">${icon("clock")}<div><strong>Confirming your payment…</strong><span>This usually takes a few seconds.</span></div></div>
+         <h2 style="margin-top:14px">Create your account</h2>`;
+    const subline = app.querySelector(".auth h2 + p");
+    if (subline) subline.textContent = "One last step: this is the login you'll use to manage your plan and tablets.";
+    const em = app.querySelector("#su-email");
+    if (em && c.email) em.value = c.email;
+    const sig = app.querySelector("#si-email");
+    if (sig && c.email) sig.value = c.email;
+  }
   if (opts.paying) {
     app.querySelector(".auth h2").insertAdjacentHTML("afterend",
       `<div class="notice info" style="margin-top:12px">${icon("card")}<span>Create your account or sign in — the <strong>Paystack</strong> payment window opens right after.</span></div>`);
@@ -1050,6 +1072,97 @@ async function viewBilling() {
   }));
 }
 
+async function claimStatus(token) {
+  const res = await fetch("/v1/public/checkout/status", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ claimToken: token }) });
+  return res.ok ? res.json() : null;
+}
+
+/** After paying on the product page: create/sign in to an account, then activate the plan. */
+async function viewClaim(token) {
+  lstore.set("st_claim", token);
+  let info = await claimStatus(token);
+  if (!info) { lstore.set("st_claim", null); flash("We couldn't find that payment. If you were charged, contact support."); location.hash = "#/"; return; }
+  const planName = info.plan === "organization" ? "Organization" : "Individual";
+  const kind = info.plan === "organization" ? "school" : "family";
+  if (info.status === "claimed") {
+    lstore.set("st_claim", null);
+    store.set("st_next", null);
+    app.innerHTML = doneCard("check", "ok", "Already activated", `This ${planName} plan payment has already been added to a workspace.`);
+    return;
+  }
+  store.set("st_next", `#/claim/${token}`);
+  store.set("st_want_kind", kind);
+
+  const session = state.org ? true : await loadSession();
+  if (!session) {
+    viewLogin({ signup: true, kind, claim: info });
+    // Keep checking until Paystack confirms, then update the banner.
+    for (let i = 0; i < 20 && info.status === "initialized" && location.hash === `#/claim/${token}`; i++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      info = (await claimStatus(token)) || info;
+    }
+    if (info.status === "paid" && location.hash === `#/claim/${token}` && !store.get("st_token")) {
+      const b = app.querySelector(".paid-banner.wait");
+      if (b) b.outerHTML = `<div class="paid-banner">${icon("check")}<div><strong>Payment received</strong><span>${h(planName)} plan · ${h(money(info.amount, info.currency))}/month</span></div></div>`;
+    }
+    return;
+  }
+  if (session === "noorg") return viewWelcome();
+
+  sidebar.hidden = false;
+  setActiveNav("billing");
+  app.innerHTML = `<section class="card" style="max-width:560px;margin:40px auto;text-align:center"><div class="loader" style="margin:16px auto"></div>
+    <h2>Activating your ${h(planName)} plan…</h2><p class="muted">Confirming with Paystack.</p></section>`;
+  for (let i = 0; i < 20 && info.status === "initialized"; i++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    info = (await claimStatus(token)) || info;
+  }
+  if (info.status !== "paid") {
+    app.innerHTML = doneCard("clock", "warn", "Still waiting for Paystack", "Your payment hasn't been confirmed yet. Refresh this page in a minute. If you were charged and this doesn't clear, contact support.");
+    return;
+  }
+  try {
+    await api("POST", orgPath("/billing/claim"), { claimToken: token });
+  } catch (e) {
+    const wrongKind = /plan|kind/i.test(e.message) || e.message === ERRORS.purchase_plan_mismatch;
+    const busyOrg = e.message === ERRORS.already_active;
+    if (wrongKind || busyOrg) {
+      app.innerHTML = `<section class="card" style="max-width:560px;margin:40px auto">
+        ${section("card", `Where should your ${h(planName)} plan go?`)}
+        <p class="muted" style="margin-top:0">${busyOrg ? `“${h(state.org.name)}” already has an active plan.` : `This payment is for a ${kind === "school" ? "school / organization" : "family"} workspace, and “${h(state.org.name)}” is a ${state.org.kind === "school" ? "school" : "family"} workspace.`} Create a new workspace for it:</p>
+        <form id="claim-new"><label for="cn-name">${kind === "school" ? "School or organization name" : "Family name"}</label>
+          <input id="cn-name" type="text" required maxlength="200">
+          <div class="row"><button type="submit" class="full">Create workspace and activate plan</button></div></form></section>`;
+      on("#claim-new", "submit", (ev) => {
+        ev.preventDefault();
+        busy(ev.submitter, async () => {
+          const r = await api("POST", "/v1/orgs", { kind, name: val("#cn-name") });
+          store.set("st_org", r.orgId);
+          state.org = null;
+          await loadSession();
+          await viewClaim(token);
+        });
+      });
+      return;
+    }
+    flash(e.message);
+    return;
+  }
+  lstore.set("st_claim", null);
+  store.set("st_next", null);
+  store.set("st_want_kind", null);
+  state.org = null;
+  await loadSession();
+  app.innerHTML = doneCard("check", "ok", `Your ${planName} plan is active`, "Thank you! Your workspace is ready. Next: add your students.", true);
+}
+
+function doneCard(ic, tone, title, text, home = true) {
+  return `<section class="card" style="max-width:520px;margin:40px auto;text-align:center">
+    <span class="icon-tile ${tone}" style="width:56px;height:56px;margin:0 auto 12px">${icon(ic)}</span>
+    <h2>${h(title)}</h2><p class="muted">${h(text)}</p>
+    ${home ? `<div class="row" style="justify-content:center"><a class="button" href="#/">Go to Home</a></div>` : ""}</section>`;
+}
+
 async function viewBillingReturn(reference) {
   setActiveNav("home");
   app.innerHTML = `<section class="card" style="max-width:520px;margin:40px auto;text-align:center">
@@ -1086,6 +1199,9 @@ async function route() {
     if (state.org || (await loadSession())) { location.hash = "#/subscribe"; return; }
     return viewLogin({ signup: true, kind: pick[1], paying: true });
   }
+  const claimM = /^#\/claim\/([A-Za-z0-9_-]{20,200})$/.exec(hash);
+  if (claimM) return viewClaim(claimM[1]);
+  if (hash === "#/claim-return") { const tk = lstore.get("st_claim"); location.hash = tk ? `#/claim/${tk}` : "#/"; return; }
   const oauth = /^#\/oauth\/([A-Za-z0-9_-]{20,200})$/.exec(hash);
   if (oauth) return viewOauthDone(oauth[1]);
   const oerr = /^#\/oauth-error\/([a-z_]+)$/.exec(hash);

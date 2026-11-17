@@ -161,7 +161,7 @@
               <li><span data-icon="check"></span> App rules &amp; school-hours schedule</li>
               <li><span data-icon="check"></span> Activity log &amp; data export</li>
             </ul>
-            <a class="btn btn-ghost btn-block" href="/app#/subscribe/family">Choose Individual</a>
+            <a class="btn btn-ghost btn-block" href="/app#/subscribe/family" data-checkout="individual">Choose Individual</a>
           </article>
           <article class="plan featured">
             <span class="ribbon">For schools</span>
@@ -175,7 +175,7 @@
               <li><span data-icon="check"></span> Parent invitations &amp; consent records</li>
               <li><span data-icon="check"></span> Staff roles, activity log &amp; data export</li>
             </ul>
-            <a class="btn btn-block" href="/app#/subscribe/school">Choose Organization</a>
+            <a class="btn btn-block" href="/app#/subscribe/school" data-checkout="organization">Choose Organization</a>
           </article>
         </div>
         <div class="paystack">
@@ -226,6 +226,21 @@
       <small>© <span data-year>2026</span> SafeTab. Payments processed by Paystack.</small>
     </div>
   </footer>
+  <!-- Checkout: email, then Paystack's secure payment window. Account comes after. -->
+  <dialog id="checkout" class="checkout" aria-labelledby="co-title">
+    <form method="dialog" class="co-close-form"><button class="co-close" aria-label="Close" value="cancel">×</button></form>
+    <form id="co-form" class="co-body">
+      <span class="co-ico" data-icon="lock"></span>
+      <h2 id="co-title">Organization plan</h2>
+      <p class="co-price"><span id="co-price">GH₵240</span><small>/month</small></p>
+      <p class="co-note">Pay now — you'll create your account right after. Cancel any time.</p>
+      <label for="co-email">Email for your receipt and account</label>
+      <input id="co-email" type="email" required autocomplete="email" placeholder="you@example.com">
+      <p id="co-error" class="co-error" role="alert" hidden></p>
+      <button type="submit" class="btn btn-block" id="co-pay">Continue to payment</button>
+      <p class="co-legal">Secure payment by <b>Paystack</b>. By continuing you agree to our <a href="/terms" target="_blank" rel="noopener">Terms</a> and <a href="/refunds" target="_blank" rel="noopener">Refund Policy</a>.</p>
+    </form>
+  </dialog>
   <script src="/landing.js"></script>
 </body>
 </html>

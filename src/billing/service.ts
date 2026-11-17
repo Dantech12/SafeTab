@@ -4,6 +4,7 @@ import { config } from "../config.js";
 import { q, withTenant, type Tx } from "../db/pool.js";
 import type { Plan } from "./entitlements.js";
 import type { PaystackClient, PaystackTransaction } from "./paystack.js";
+import { handlePurchaseEvent } from "./purchases.js";
 
 export function planPricing(plan: Plan) {
   const c = config();
@@ -81,7 +82,11 @@ export async function handlePaystackEvent(raw: Buffer, paystack: PaystackClient,
   if (!orgId && (subCode || customerCode)) {
     orgId = (await q("SELECT lookup_subscription_org($1, $2) AS id", [subCode, customerCode])).rows[0]?.id ?? null;
   }
-  if (!orgId) return; // unknown to us; acknowledged so Paystack stops retrying
+  if (!orgId) {
+    // Paid before creating an account? (pay-first checkout from the product page)
+    await handlePurchaseEvent(evt.event, data, paystack);
+    return; // otherwise unknown to us; acknowledged so Paystack stops retrying
+  }
 
   await withTenant(orgId, async (tx) => {
     const graceUntil = new Date(now.getTime() + config().BILLING_GRACE_DAYS * 86400_000);

@@ -10,6 +10,7 @@ import { accessLevel, effectiveStatus, PLAN_LIMITS, type Plan } from "../billing
 import { confirmPayment, planPricing } from "../billing/service.js";
 import { PaystackRejectedError } from "../billing/paystack.js";
 import { resolvePlanCode } from "../billing/plans.js";
+import { claimPurchase, confirmPurchase, createPurchase, purchaseByToken } from "../billing/purchases.js";
 
 export async function billingRoutes(app: FastifyInstance) {
   const { deps } = app;
@@ -81,6 +82,41 @@ export async function billingRoutes(app: FastifyInstance) {
       // is the full-page fallback. Neither lets the client change the amount or plan.
       return { accessCode: init.access_code, authorizationUrl: init.authorization_url, reference, plan, amount, currency };
     });
+  });
+
+  // ---- Pay first, create the account afterwards (product page checkout) ----
+  const publicLimit = { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } };
+
+  app.post("/v1/public/checkout", publicLimit, async (req) => {
+    const body = z.object({ plan: z.enum(["individual", "organization"]), email: z.string().trim().toLowerCase().email().max(254) }).parse(req.body);
+    return createPurchase(deps.paystack, body.plan, body.email, (m) => req.log.info(m));
+  });
+
+  app.post("/v1/public/checkout/status", publicLimit, async (req) => {
+    const { claimToken } = z.object({ claimToken: z.string().min(20).max(200) }).parse(req.body);
+    const p = await purchaseByToken(claimToken);
+    if (!p) throw new HttpError(404, "purchase_not_found");
+    let status = p.status;
+    if (status === "initialized") {
+      try {
+        const r = await confirmPurchase(deps.paystack, p.reference);
+        if (r === "paid" || r === "failed") status = r; // pending / mismatch: still not paid
+      } catch { /* Paystack unreachable or no transaction yet: still "initialized" */ }
+    }
+    return { status, plan: p.plan, email: p.email, amount: p.amount, currency: p.currency };
+  });
+
+  /** Paystack's full-page checkout returns here; the portal continues the claim. */
+  app.get("/checkout/return", async (req, reply) => {
+    const ok = /^st_[0-9a-f]{32}$/.test(String((req.query as { ref?: string }).ref ?? ""));
+    return reply.redirect(ok ? "/app#/claim-return" : "/app");
+  });
+
+  app.post("/v1/orgs/:orgId/billing/claim", async (req) => {
+    const ctx = await app.userCtx(req);
+    requirePerm(ctx, "billing.manage");
+    const { claimToken } = z.object({ claimToken: z.string().min(20).max(200) }).parse(req.body);
+    return withTenant(ctx.orgId, (tx) => claimPurchase(tx, deps.paystack, claimToken, ctx.userId, deps.now()));
   });
 
   /** Payment history for the billing page (amounts in subunits). */

@@ -208,3 +208,24 @@ svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-widt
 .contact-card h3 { margin-bottom: 8px; }
 .legal-nav { margin-left: auto; display: flex; align-items: center; gap: 18px; }
 .legal-nav a:not(.btn) { color: var(--muted); font-weight: 600; }
+
+/* checkout dialog */
+.checkout { border: none; border-radius: 22px; padding: 0; width: min(440px, calc(100vw - 32px)); box-shadow: 0 30px 80px -20px rgba(15, 27, 61, .45); }
+.checkout::backdrop { background: rgba(15, 27, 61, .55); }
+.co-close-form { position: absolute; right: 12px; top: 10px; }
+.co-close { background: none; border: none; font-size: 1.6rem; line-height: 1; color: var(--muted); cursor: pointer; padding: 4px 8px; border-radius: 8px; }
+.co-close:hover { background: var(--blue-softer); color: var(--text); }
+.co-body { padding: 32px 28px 26px; display: grid; gap: 10px; }
+.co-ico { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; background: var(--blue-soft); color: var(--blue); }
+.co-ico svg.i { width: 22px; height: 22px; vertical-align: 0; }
+.co-body h2 { font-size: 1.35rem; margin-top: 6px; }
+.co-price { font-size: 2.3rem; font-weight: 800; letter-spacing: -.02em; line-height: 1.1; }
+.co-price small { font-size: 1rem; color: var(--muted); font-weight: 600; letter-spacing: 0; }
+.co-note { color: var(--muted); font-size: .95rem; }
+.co-body label { font-weight: 650; font-size: .92rem; margin-top: 6px; }
+.co-body input { width: 100%; padding: 12px 14px; border: 1px solid #c9d5ec; border-radius: 12px; font: inherit; }
+.co-body input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px var(--blue-soft); }
+.co-error { color: var(--bad); background: var(--bad-bg); border-radius: 10px; padding: 10px 12px; font-size: .92rem; }
+.co-legal { color: var(--muted); font-size: .8rem; text-align: center; }
+.co-legal a { text-decoration: underline; }
+.btn[disabled] { opacity: .6; cursor: wait; }

@@ -11,7 +11,7 @@ const STATE_TTL_MS = 10 * 60_000;
 const LOGIN_CODE_TTL_MS = 2 * 60_000;
 const MAX_WORKSPACES = 5;
 // Only these portal locations may be used as "continue to" after sign-in.
-const NEXT_RE = /^#\/(subscribe(\/(school|family))?|signup\/(school|family)|invite\/[A-Za-z0-9_-]{20,200})$/;
+const NEXT_RE = /^#\/(subscribe(\/(school|family))?|signup\/(school|family)|(invite|claim)\/[A-Za-z0-9_-]{20,200})$/;
 
 /** Finds or creates the SafeTab user for a verified provider identity. */
 async function userFor(id: VerifiedIdentity): Promise<{ userId: string; created: boolean } | { error: string }> {

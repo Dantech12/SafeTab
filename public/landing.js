@@ -49,6 +49,7 @@ fetch("/v1/public/plans")
   .then((r) => (r.ok ? r.json() : null))
   .then((data) => {
     if (!data) return;
+    livePlans = data;
     for (const plan of data.plans) {
       document.querySelectorAll(`[data-price="${plan.id}"]`).forEach((el) => (el.textContent = money(plan.amount, data.currency)));
       for (const [k, v] of Object.entries(plan.limits)) {
@@ -58,3 +59,77 @@ fetch("/v1/public/plans")
     document.querySelectorAll("[data-currency]").forEach((el) => (el.textContent = data.currency));
   })
   .catch(() => { /* keep the static prices */ });
+
+// ---- Checkout: plan -> email -> Paystack pop-up -> create account ----
+const dialog = document.getElementById("checkout");
+const coForm = document.getElementById("co-form");
+const coErr = document.getElementById("co-error");
+const coPay = document.getElementById("co-pay");
+let chosenPlan = null;
+let livePlans = null;
+
+const CO_ERRORS = {
+  payments_not_configured: "Payments aren't set up yet. Please try again later.",
+  paystack_unavailable: "We couldn't reach Paystack. Check your connection and try again.",
+  validation_failed: "Please enter a valid email address.",
+};
+const showErr = (m) => { coErr.textContent = m; coErr.hidden = !m; };
+
+function loadPaystack() {
+  if (window.PaystackPop) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "https://js.paystack.co/v2/inline.js";
+    const timer = setTimeout(() => resolve(false), 10000);
+    s.onload = () => { clearTimeout(timer); resolve(!!window.PaystackPop); };
+    s.onerror = () => { clearTimeout(timer); resolve(false); };
+    document.head.appendChild(s);
+  });
+}
+
+document.querySelectorAll("[data-checkout]").forEach((a) => a.addEventListener("click", (e) => {
+  if (!dialog?.showModal) return; // very old browser: follow the link instead
+  e.preventDefault();
+  chosenPlan = a.dataset.checkout;
+  const plan = livePlans?.plans.find((p) => p.id === chosenPlan);
+  document.getElementById("co-title").textContent = chosenPlan === "organization" ? "Organization plan" : "Individual plan";
+  document.getElementById("co-price").textContent = plan ? money(plan.amount, livePlans.currency) : document.querySelector(`[data-price="${chosenPlan}"]`)?.textContent || "";
+  showErr("");
+  dialog.showModal();
+  document.getElementById("co-email").focus();
+}));
+
+coForm?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  showErr("");
+  coPay.disabled = true;
+  coPay.textContent = "Opening secure payment…";
+  try {
+    const res = await fetch("/v1/public/checkout", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ plan: chosenPlan, email: document.getElementById("co-email").value.trim() }),
+    });
+    const r = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      showErr(r.error === "paystack_rejected" ? `Paystack said: “${r.detail}”.` : CO_ERRORS[r.error] || "Something went wrong. Please try again.");
+      return;
+    }
+    // The claim token proves this browser paid; it's needed to create the account next.
+    try { localStorage.setItem("st_claim", r.claimToken); } catch { /* private mode */ }
+    const next = `/app#/claim/${r.claimToken}`;
+    if (!(await loadPaystack())) { location.href = r.authorizationUrl; return; }
+    dialog.close();
+    try {
+      new window.PaystackPop().resumeTransaction(r.accessCode, {
+        onSuccess: () => { location.href = next; },
+        onCancel: () => { dialog.showModal(); showErr("Payment window closed. No payment was taken — you can try again."); },
+        onError: () => { location.href = r.authorizationUrl; },
+      });
+    } catch { location.href = r.authorizationUrl; }
+  } catch {
+    showErr("We couldn't connect. Check your internet connection and try again.");
+  } finally {
+    coPay.disabled = false;
+    coPay.textContent = "Continue to payment";
+  }
+});
