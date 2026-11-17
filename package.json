@@ -18,7 +18,8 @@
     "worker": "tsx --env-file=.env src/jobs/worker.ts",
     "dev:plain": "tsx watch --env-file=.env src/server.ts",
     "set-pricing": "tsx scripts/set-pricing.ts",
-    "set-google-signin": "tsx scripts/set-google-signin.ts"
+    "set-google-signin": "tsx scripts/set-google-signin.ts",
+    "set-email": "tsx scripts/set-email.ts"
   },
   "dependencies": {
     "@fastify/helmet": "^13.2.0",
@@ -27,12 +28,14 @@
     "fastify": "^5.12.8",
     "google-auth-library": "^10.9.1",
     "jose": "^6.2.17",
+    "nodemailer": "^10.6.0",
     "pg": "^8.23.1",
     "qrcode": "^1.5.4",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "@types/qrcode": "^1.5.6",
     "tsx": "^4.23.15",

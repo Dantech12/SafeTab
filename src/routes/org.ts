@@ -6,6 +6,7 @@ import { audit } from "../audit.js";
 import { hashToken, newToken } from "../lib/tokens.js";
 import { HttpError } from "../lib/errors.js";
 import { config } from "../config.js";
+import { layout } from "../lib/mailer.js";
 
 const Uuid = z.string().uuid();
 const INVITE_TTL_MS = 72 * 3600_000;
@@ -83,10 +84,37 @@ export async function orgRoutes(app: FastifyInstance) {
         [body.email, body.role, hashToken(token), ctx.userId, new Date(Date.now() + INVITE_TTL_MS), body.studentId ?? null],
       );
       await audit(tx, { actorType: "user", actorId: ctx.userId, action: "invitation.created", targetType: "invitation", targetId: r.rows[0].id, metadata: { role: body.role, studentId: body.studentId ?? null }, ip: ctx.ip });
-      // In production the link is emailed to the invitee only and NOT returned to the
-      // inviter. Returned here so the flow is testable before email delivery exists.
       const acceptUrl = `${config().PUBLIC_BASE_URL}/app#/invite/${token}`;
-      return reply.status(201).send({ id: r.rows[0].id, expiresAt: r.rows[0].expires_at, ...(config().NODE_ENV !== "production" ? { acceptUrl, token } : {}) });
+      const prod = config().NODE_ENV === "production";
+      if (prod && !app.deps.mailer.configured) throw new HttpError(503, "email_not_configured");
+
+      // Email the link to the invitee only. (Outside production the link is also shown to
+      // the inviter, so the pilot works before an email service is set up.)
+      const org = (await tx.query("SELECT name FROM organizations")).rows[0];
+      const inviter = (await tx.query("SELECT display_name FROM users WHERE id = $1", [ctx.userId])).rows[0];
+      const child = body.studentId ? (await tx.query("SELECT display_name FROM students WHERE id = $1", [body.studentId])).rows[0] : null;
+      const { html, text } = layout(body.role === "guardian"
+        ? {
+            title: `${org.name} invited you to SafeTab`,
+            intro: `${inviter.display_name} at ${org.name} invited you as a parent of ${child?.display_name ?? "your child"}. In SafeTab you can see the school-hours rules for your child's tablet and choose whether to agree. Nothing changes on the tablet unless you agree.`,
+            button: { label: "View invitation", url: acceptUrl },
+            outro: "This link works once and expires in 3 days. If you weren't expecting it, you can ignore this email.",
+          }
+        : {
+            title: `Join ${org.name} on SafeTab`,
+            intro: `${inviter.display_name} invited you to help manage ${org.name}'s tablets on SafeTab as ${body.role === "org_admin" ? "an admin" : "a teacher / supervisor"}.`,
+            button: { label: "Accept invitation", url: acceptUrl },
+            outro: "This link works once and expires in 3 days. If you weren't expecting it, you can ignore this email.",
+          });
+      let emailed = false;
+      try {
+        await app.deps.mailer.send({ to: body.email, subject: body.role === "guardian" ? `${org.name}: school-hours rules for ${child?.display_name ?? "your child"}` : `Invitation to join ${org.name}`, html, text });
+        emailed = app.deps.mailer.configured;
+      } catch (e) {
+        if (prod) throw new HttpError(502, "email_failed");
+        req.log.warn({ err: e instanceof Error ? e.message : String(e) }, "invitation email failed");
+      }
+      return reply.status(201).send({ id: r.rows[0].id, expiresAt: r.rows[0].expires_at, emailed, ...(prod ? {} : { acceptUrl, token }) });
     });
   });
 

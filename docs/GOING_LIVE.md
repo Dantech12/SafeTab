@@ -64,6 +64,22 @@ The Terms, Privacy Policy and Refund Policy (`src/routes/site.ts`) are a **start
 ## 7. ⚠️ The product must work before you charge
 SafeTab can't enroll real tablets until Google approves the Android Management API project, which requires a DUNS number (see the README). Until then, keep the site as **Early access** and don't take live payments. Charging for a service that can't yet be delivered can breach consumer protection rules and can get a Paystack account frozen.
 
+## 8. Email (password reset and invitations)
+SafeTab sends "Forgot password?" links, "your password was changed" notices, and parent and staff invitations. Until email is set up, these emails are **printed in the SafeTab window** instead, which is fine for local testing.
+
+To send real emails, run `npm run set-email` and choose one of these:
+- **Gmail** (free, about 500 emails a day):
+  1. Turn on 2-Step Verification for your Google account.
+  2. Create an **app password** at myaccount.google.com → Security → App passwords.
+  3. Use your Gmail address, plus the 16-letter app password.
+- **Brevo** (free plan, about 300 emails a day):
+  1. Create an account at brevo.com.
+  2. Under **SMTP & API**, copy the SMTP login and create an SMTP key.
+  3. Verify your sender email address.
+
+Restart SafeTab afterwards. To test it, use **Forgot password?** on the sign-in page with your own email.
+
+In production (`NODE_ENV=production`), email must be set up: invitations are only sent by email there, never shown on screen.
+
 ## Not built yet
-- Password reset and invitation emails. These need an email service (e.g. a free tier of an email API).
 - Invoices sent by SafeTab. Paystack sends payment receipts.

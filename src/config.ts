@@ -50,6 +50,16 @@ const Env = z.object({
   BUSINESS_ADDRESS: z.string().default(""),
   BUSINESS_COUNTRY: z.string().default("Ghana"),
 
+  // --- Outgoing email (password reset, invitations). Any SMTP service works, e.g.
+  // Gmail with an app password, or Brevo. Empty = emails are printed in the server
+  // window instead (local testing only). ---
+  SMTP_HOST: z.string().default(""),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(465),
+  SMTP_SECURE: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
+  SMTP_USER: z.string().default(""),
+  SMTP_PASS: z.string().default(""),
+  MAIL_FROM: z.string().default(""),
+
   DEFAULT_USAGE_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(30),
 });
 

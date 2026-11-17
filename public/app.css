@@ -1,4 +1,6 @@
 /* SafeTab portal — white & blue theme. */
+.label-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 14px 0 6px; }
+.label-row label { margin: 0; }
 [hidden] { display: none !important; }
 :root {
   /* White & blue theme */

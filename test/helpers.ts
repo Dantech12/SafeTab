@@ -5,6 +5,7 @@ import { buildApp } from "../src/app.js";
 import { migrate } from "../src/db/migrate.js";
 import { closePool } from "../src/db/pool.js";
 import { FakeMdmProvider } from "../src/mdm/fake.js";
+import { MemoryMailer } from "../src/lib/mailer.js";
 import { PaystackRejectedError, type PaystackClient, type PaystackPlan, type PaystackTransaction } from "../src/billing/paystack.js";
 
 export const OWNER_URL = process.env.DATABASE_OWNER_URL!;
@@ -68,6 +69,7 @@ export interface TestCtx {
   mdm: FakeMdmProvider;
   paystack: FakePaystack;
   clock: { now: Date };
+  mailer: MemoryMailer;
 }
 
 export const PUBSUB_TEST_TOKEN = "Bearer test-pubsub-token";
@@ -76,14 +78,16 @@ export async function makeApp(opts: { oidc?: import("../src/auth/oidc.js").OidcD
   const mdm = new FakeMdmProvider();
   const paystack = new FakePaystack();
   const clock = { now: new Date() };
+  const mailer = new MemoryMailer();
   const app = await buildApp({
     mdm,
     paystack,
     verifyPubSubPush: async (h) => h === PUBSUB_TEST_TOKEN,
     now: () => clock.now,
     oidc: opts.oidc,
+    mailer,
   });
-  return { app, mdm, paystack, clock };
+  return { app, mdm, paystack, clock, mailer };
 }
 
 export async function signup(app: FastifyInstance, email: string, kind: "family" | "school" = "school") {

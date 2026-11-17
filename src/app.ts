@@ -22,6 +22,8 @@ import { consentRoutes } from "./routes/consent.js";
 import { oauthRoutes } from "./routes/oauth.js";
 import { siteRoutes } from "./routes/site.js";
 import type { OidcDeps } from "./auth/oidc.js";
+import type { Mailer } from "./lib/mailer.js";
+import { passwordRoutes } from "./routes/password.js";
 
 export interface Deps {
   mdm: MdmProvider;
@@ -31,6 +33,8 @@ export interface Deps {
   now: () => Date;
   /** Test hooks for Sign in with Google/Microsoft (token endpoint + signing keys). */
   oidc?: OidcDeps;
+  /** Outgoing email (password reset, invitations). */
+  mailer: Mailer;
 }
 
 declare module "fastify" {
@@ -120,6 +124,7 @@ export async function buildApp(deps: Deps): Promise<FastifyInstance> {
   await app.register(portalRoutes);
   await app.register(consentRoutes);
   await app.register(oauthRoutes);
+  await app.register(passwordRoutes);
   await app.register(siteRoutes);
   return app;
 }

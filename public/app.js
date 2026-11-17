@@ -95,6 +95,9 @@ const ERRORS = {
   already_active: "Your plan is already active.",
   use_provider_sign_in: "This account signs in with Google or Microsoft. Use the button above.",
   oauth_code_expired: "That sign-in link has expired. Please sign in again.",
+  reset_link_invalid: "This reset link has expired or was already used. Ask for a new one.",
+  email_not_configured: "Email isn't set up on this server yet, so invitations can't be sent.",
+  email_failed: "The invitation email couldn't be sent. Please try again.",
   workspace_limit_reached: "You've reached the maximum number of workspaces.",
   no_paystack_subscription: "There's no Paystack subscription on this workspace yet.",
   purchase_plan_mismatch: "This payment is for a different kind of workspace.",
@@ -330,7 +333,8 @@ function viewLogin(opts = {}) {
       </div>
       <form id="signin">
         <label for="si-email">Email</label><input id="si-email" type="email" autocomplete="username" required>
-        <label for="si-pw">Password</label><input id="si-pw" type="password" autocomplete="current-password" required>
+        <div class="label-row"><label for="si-pw">Password</label><a href="#/forgot" class="small">Forgot password?</a></div>
+        <input id="si-pw" type="password" autocomplete="current-password" required>
         <div class="row"><button type="submit" class="full">Sign in</button></div>
       </form>
       <form id="signup" hidden>
@@ -851,10 +855,14 @@ async function viewStudent(studentId, tab = "overview") {
     busy(e.submitter, async () => {
       const r = await api("POST", orgPath("/invitations"), { email: val("#parent-email"), role: "guardian", studentId });
       const box = app.querySelector("#invite-result");
-      box.innerHTML = r.acceptUrl
-        ? `<div class="notice info">${icon("link")}<span>Send this link to the parent (email or WhatsApp). It works once, for 3 days, and only for that email address:<br>
-            <input type="text" readonly value="${h(r.acceptUrl)}" style="margin-top:8px" aria-label="Invitation link"></span></div>`
-        : `<div class="notice info">${icon("check")}<span>Invitation created.</span></div>`;
+      const sentTo = val("#parent-email");
+      box.innerHTML = r.emailed
+        ? `<div class="notice info" style="background:var(--ok-bg);color:var(--ok)">${icon("check")}<span>Invitation emailed to <strong>${h(sentTo)}</strong>. The link works once, for 3 days.${r.acceptUrl ? `<br><span class="small">You can also send it yourself (e.g. WhatsApp):</span><input type="text" readonly value="${h(r.acceptUrl)}" style="margin-top:6px" aria-label="Invitation link">` : ""}</span></div>`
+        : r.acceptUrl
+          ? `<div class="notice info">${icon("link")}<span>Email isn't set up yet, so send this link to the parent yourself (email or WhatsApp). It works once, for 3 days, and only for that email address:<br>
+              <input type="text" readonly value="${h(r.acceptUrl)}" style="margin-top:8px" aria-label="Invitation link"></span></div>`
+          : `<div class="notice info">${icon("check")}<span>Invitation created.</span></div>`;
+      app.querySelector("#parent-email").value = "";
       box.querySelector("input")?.select();
     });
   });
@@ -1345,6 +1353,67 @@ function doneCard(ic, tone, title, text, home = true) {
     ${home ? `<div class="row" style="justify-content:center"><a class="button" href="#/">Go to Home</a></div>` : ""}</section>`;
 }
 
+// ---------- forgot / reset password ----------
+function viewForgot() {
+  sidebar.hidden = true;
+  app.innerHTML = authScreen(`
+      <h2>Forgot your password?</h2>
+      <p class="muted small" style="margin:0">Enter your email and we'll send you a link to choose a new one.</p>
+      <form id="forgot" style="margin-top:14px">
+        <label for="fp-email">Email</label><input id="fp-email" type="email" autocomplete="username" required>
+        <div class="row"><button type="submit" class="full">Send reset link</button></div>
+      </form>
+      <p class="muted small auth-foot"><a href="#/login">${icon("back")} Back to sign in</a></p>`);
+  on("#forgot", "submit", (e) => {
+    e.preventDefault();
+    busy(e.submitter, async () => {
+      const email = val("#fp-email");
+      await api("POST", "/v1/auth/password/forgot", { email });
+      app.querySelector(".auth").innerHTML = `
+        <span class="icon-tile ok" style="width:52px;height:52px;margin-bottom:12px">${icon("check")}</span>
+        <h2>Check your email</h2>
+        <p class="muted">If an account exists for <strong>${h(email)}</strong>, we've sent a link to reset the password. It works once and expires in 30 minutes. Check your spam folder if it doesn't arrive in a few minutes.</p>
+        <div class="row"><a class="button" href="#/login">Back to sign in</a></div>`;
+    });
+  });
+}
+
+async function viewReset(token) {
+  sidebar.hidden = true;
+  let email = "";
+  try {
+    email = (await api("POST", "/v1/auth/password/check", { token })).email;
+  } catch {
+    app.innerHTML = authScreen(`
+        <span class="icon-tile warn" style="width:52px;height:52px;margin-bottom:12px">${icon("alert")}</span>
+        <h2>This link has expired</h2>
+        <p class="muted">Reset links work once and expire after 30 minutes. Ask for a new one.</p>
+        <div class="row"><a class="button" href="#/forgot">Send a new link</a></div>`);
+    return;
+  }
+  app.innerHTML = authScreen(`
+      <h2>Choose a new password</h2>
+      <p class="muted small" style="margin:0">For ${h(email)}. You'll be signed out on all other devices.</p>
+      <form id="reset" style="margin-top:14px">
+        <label for="rp-1">New password <span class="muted small">· at least 12 characters</span></label>
+        <input id="rp-1" type="password" autocomplete="new-password" minlength="12" required>
+        <label for="rp-2">Repeat new password</label>
+        <input id="rp-2" type="password" autocomplete="new-password" minlength="12" required>
+        <div class="row"><button type="submit" class="full">Save new password</button></div>
+      </form>`);
+  on("#reset", "submit", (e) => {
+    e.preventDefault();
+    busy(e.submitter, async () => {
+      if (val("#rp-1") !== val("#rp-2")) throw new Error("The two passwords don't match.");
+      await api("POST", "/v1/auth/password/reset", { token, password: val("#rp-1") });
+      store.set("st_token", null);
+      state.org = null;
+      flash("Password changed. Sign in with your new password.", "success");
+      location.hash = "#/login";
+    });
+  });
+}
+
 async function viewBillingReturn(reference) {
   setActiveNav("home");
   app.innerHTML = `<section class="card" style="max-width:520px;margin:40px auto;text-align:center">
@@ -1371,6 +1440,9 @@ function on(sel, evt, fn) { app.querySelectorAll(sel).forEach((el) => el.addEven
 async function route() {
   const hash = location.hash || "#/";
   if (hash === "#/login") return viewLogin();
+  if (hash === "#/forgot") return viewForgot();
+  const resetM = /^#\/reset\/([A-Za-z0-9_-]{20,200})$/.exec(hash);
+  if (resetM) return viewReset(resetM[1]);
   const su = /^#\/signup(?:\/(school|family))?$/.exec(hash);
   if (su) return viewLogin({ signup: true, kind: su[1] });
   // Plan buttons on the product page: /app#/subscribe/family or /app#/subscribe/school
