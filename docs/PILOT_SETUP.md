@@ -60,6 +60,12 @@ npm run dev
 ```
 Leave this window open. It runs the server and the background jobs (device status checks every 5 minutes). `npm run worker` is only needed for production setups.
 
+**Automatic updates:** while `npm run dev` runs, it checks once a minute for new SafeTab changes and applies them:
+- It downloads the changes, reinstalls packages if needed, updates the database if needed, and restarts SafeTab.
+- It only ever moves your copy forward. It never overwrites files you edited, and never touches `.env`.
+- If you have edited project files yourself, it pauses and says so in the window.
+- To turn it off, add `AUTO_UPDATE=false` to `.env`.
+
 ## 5. Use the portal
 Open **http://localhost:3000/app** in your browser. (The public product page with pricing is at **http://localhost:3000**.)
 1. **Create account** (or sign in).
