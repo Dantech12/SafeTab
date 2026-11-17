@@ -29,3 +29,12 @@ describe("set-pricing", () => {
     expect(() => pricingValues("GHS", -1, 240)).toThrow(/positive/);
   });
 });
+
+describe("set-google-signin", () => {
+  it("accepts real-looking Google client values and rejects mistakes", async () => {
+    const { validateGoogleClient } = await import("../scripts/set-google-signin.js");
+    expect(validateGoogleClient("123456789012-abc123def456.apps.googleusercontent.com", "GOCSPX-abcdefghijklmnop")).toBeNull();
+    expect(validateGoogleClient("my-project-id", "GOCSPX-abcdefghijklmnop")).toMatch(/Client ID/);
+    expect(validateGoogleClient("123456789012-abc.apps.googleusercontent.com", "short")).toMatch(/secret/);
+  });
+});

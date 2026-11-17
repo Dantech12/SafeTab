@@ -21,10 +21,9 @@ They appear in the footer and on the Terms, Privacy, Refunds and Contact pages.
 3. **APIs & Services → Credentials → Create credentials → OAuth client ID**:
    - Application type: **Web application**.
    - Authorized redirect URI: `http://localhost:3000/auth/google/callback`. Add your real domain's `https://…/auth/google/callback` later.
-4. Copy the **Client ID** and **Client secret** into `.env`:
+4. Save the **Client ID** and **Client secret** with this command. It asks for both and writes them to `.env`, with a backup:
    ```
-   GOOGLE_OAUTH_CLIENT_ID=...
-   GOOGLE_OAUTH_CLIENT_SECRET=...
+   npm run set-google-signin
    ```
 5. Restart SafeTab. The "Continue with Google" button appears.
 

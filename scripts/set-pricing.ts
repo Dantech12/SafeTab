@@ -10,7 +10,7 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-export function updateEnv(text: string, values: Record<string, string>): string {
+export function updateEnv(text: string, values: Record<string, string>, header = "# Pricing (set by `npm run set-pricing`)"): string {
   const eol = text.includes("\r\n") ? "\r\n" : "\n";
   const lines = text.split(/\r?\n/);
   const seen = new Set<string>();
@@ -25,7 +25,7 @@ export function updateEnv(text: string, values: Record<string, string>): string 
   const missing = Object.keys(values).filter((k) => !seen.has(k));
   if (missing.length) {
     if (out.length && out[out.length - 1] === "") out.pop();
-    out.push("", "# Pricing (set by `npm run set-pricing`)", ...missing.map((k) => `${k}=${values[k]}`), "");
+    out.push("", header, ...missing.map((k) => `${k}=${values[k]}`), "");
   }
   return out.join(eol);
 }
