@@ -1,0 +1,73 @@
+# Render Blueprint for SafeTab (https://render.com/docs/blueprint-spec).
+# Render asks for every value marked `sync: false` when you create the Blueprint.
+# Secrets are entered in Render's dashboard, never committed here.
+services:
+  - type: web
+    name: safetab
+    runtime: node
+    plan: free            # sleeps when idle; switch to "starter" to keep it always on
+    region: frankfurt     # closest Render region to West Africa
+    branch: claude/vibrant-pasteur-oiptqy
+    autoDeploy: true      # every pushed change goes live automatically
+    buildCommand: npm ci
+    startCommand: npm run start:hosted   # sets up / migrates the database, then starts
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: EMBED_SCHEDULER         # one instance runs the background jobs too
+        value: "true"
+      - key: PUBLIC_BASE_URL         # e.g. https://safetab.onrender.com (your service's address)
+        sync: false
+      - key: TOKEN_PEPPER
+        generateValue: true
+      # --- Database (Neon) ---
+      - key: DATABASE_OWNER_URL      # Neon connection string (owner role)
+        sync: false
+      - key: APP_DB_PASSWORD         # password for SafeTab's restricted database role
+        generateValue: true
+      # --- Payments (Paystack) ---
+      - key: PAYSTACK_SECRET_KEY     # sk_test_... until you go live
+        sync: false
+      - key: BILLING_CURRENCY
+        value: GHS
+      - key: PLAN_INDIVIDUAL_AMOUNT
+        value: "6000"
+      - key: PLAN_ORGANIZATION_AMOUNT
+        value: "24000"
+      # --- Android Enterprise ---
+      - key: MDM_PROVIDER
+        value: amapi
+      - key: GOOGLE_CLOUD_PROJECT_ID
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON   # paste the whole service-account key file
+        sync: false
+      - key: DEVICE_STATUS_MODE
+        value: poll
+      # --- Email ---
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_SECURE
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      # --- Sign in with Google (optional) ---
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      # --- Business details ---
+      - key: BUSINESS_NAME
+        value: SafeTab
+      - key: SUPPORT_EMAIL
+        sync: false
+      - key: BUSINESS_ADDRESS
+        sync: false
+      - key: BUSINESS_COUNTRY
+        value: Ghana

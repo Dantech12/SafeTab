@@ -4,8 +4,15 @@ const Env = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().default(3000),
   PUBLIC_BASE_URL: z.string().url(),
-  DATABASE_URL: z.string().min(1),
+  // Runtime connection (restricted role, row-level security applies). In hosting you can
+  // leave it empty and set APP_DB_PASSWORD instead: it is then derived from
+  // DATABASE_OWNER_URL with the app role's name and password.
+  DATABASE_URL: z.string().default(""),
   DATABASE_OWNER_URL: z.string().min(1).optional(),
+  APP_DB_USER: z.string().regex(/^[a-z_][a-z0-9_]{0,62}$/).default("safetab_app"),
+  APP_DB_PASSWORD: z.string().default(""),
+  // Service-account key as JSON text (hosting), instead of a key file path.
+  GOOGLE_SERVICE_ACCOUNT_JSON: z.string().default(""),
   TOKEN_PEPPER: z.string().min(32, "TOKEN_PEPPER must be >= 32 chars of random data"),
 
   PAYSTACK_SECRET_KEY: z.string().min(1),
@@ -65,6 +72,15 @@ const Env = z.object({
 
 export type Config = z.infer<typeof Env>;
 
+/** Owner connection string with the restricted app role's credentials swapped in. */
+export function appDatabaseUrl(ownerUrl: string | undefined, user: string, password: string): string | null {
+  if (!ownerUrl || !password) return null;
+  const u = new URL(ownerUrl);
+  u.username = encodeURIComponent(user);
+  u.password = encodeURIComponent(password);
+  return u.toString();
+}
+
 let cached: Config | undefined;
 export function config(): Config {
   if (!cached) {
@@ -81,6 +97,10 @@ export function config(): Config {
       throw new Error("Invalid configuration for: GOOGLE_CLOUD_PROJECT_ID (required when MDM_PROVIDER=amapi)");
     }
     parsed.data.EMBED_SCHEDULER ??= parsed.data.NODE_ENV !== "production";
+    if (!parsed.data.DATABASE_URL) {
+      parsed.data.DATABASE_URL = appDatabaseUrl(parsed.data.DATABASE_OWNER_URL, parsed.data.APP_DB_USER, parsed.data.APP_DB_PASSWORD) ?? "";
+      if (!parsed.data.DATABASE_URL) throw new Error("Invalid configuration for: DATABASE_URL (or DATABASE_OWNER_URL + APP_DB_PASSWORD)");
+    }
     cached = parsed.data;
   }
   return cached;

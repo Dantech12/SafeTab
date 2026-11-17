@@ -1,4 +1,5 @@
 import { GoogleAuth } from "google-auth-library";
+import { config } from "../config.js";
 import type { EnrollmentToken, MdmDeviceStatus, MdmProvider } from "./provider.js";
 
 /**
@@ -24,7 +25,11 @@ function toStatus(d: any): MdmDeviceStatus {
 
 export class AmapiProvider implements MdmProvider {
   constructor(private projectId: string) {}
-  private auth = new GoogleAuth({ scopes: ["https://www.googleapis.com/auth/androidmanagement"] });
+  // Key from GOOGLE_SERVICE_ACCOUNT_JSON (hosting) or the file in GOOGLE_APPLICATION_CREDENTIALS.
+  private auth = new GoogleAuth({
+    scopes: ["https://www.googleapis.com/auth/androidmanagement"],
+    ...(config().GOOGLE_SERVICE_ACCOUNT_JSON ? { credentials: JSON.parse(config().GOOGLE_SERVICE_ACCOUNT_JSON) } : {}),
+  });
 
   private async call<T>(method: string, path: string, body?: unknown): Promise<T> {
     const client = await this.auth.getClient();
