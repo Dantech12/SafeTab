@@ -7,3 +7,4 @@ dist/
 *service-account*.json
 coverage/
 pilot-enrollment-qr.png
+.env.backup-*

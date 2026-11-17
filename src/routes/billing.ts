@@ -9,6 +9,7 @@ import { HttpError } from "../lib/errors.js";
 import { accessLevel, effectiveStatus, PLAN_LIMITS, type Plan } from "../billing/entitlements.js";
 import { confirmPayment, planPricing } from "../billing/service.js";
 import { PaystackRejectedError } from "../billing/paystack.js";
+import { resolvePlanCode } from "../billing/plans.js";
 
 export async function billingRoutes(app: FastifyInstance) {
   const { deps } = app;
@@ -41,11 +42,20 @@ export async function billingRoutes(app: FastifyInstance) {
       const sub = (await tx.query("SELECT plan, status, current_period_end, grace_until FROM subscriptions FOR UPDATE")).rows[0];
       if (accessLevel(sub, deps.now()) === "full" && sub.status === "active") throw new HttpError(409, "already_active");
       const plan = sub.plan as Plan; // family org => individual, school org => organization
-      const { amount, currency, planCode } = planPricing(plan);
+      const { amount, currency, planCode: configuredCode } = planPricing(plan);
       const key = config().PAYSTACK_SECRET_KEY;
-      if (/REPLACE_ME/.test(key) || /REPLACE_ME/.test(planCode)) {
-        // Sample values from .env.example: fail clearly instead of calling Paystack.
+      if (!key || /REPLACE_ME/.test(key)) {
+        // Sample value from .env.example: fail clearly instead of calling Paystack.
         throw new HttpError(503, "payments_not_configured");
+      }
+      // Use the configured plan if it matches the price, otherwise find/create one.
+      let planCode: string;
+      try {
+        planCode = await resolvePlanCode(deps.paystack, { plan, amount, currency, configuredCode }, (m) => req.log.info(m));
+      } catch (e) {
+        req.log.warn({ err: e instanceof Error ? e.message : String(e) }, "paystack plan lookup failed");
+        if (e instanceof PaystackRejectedError) throw new HttpError(502, "paystack_rejected", undefined, e.paystackMessage || `HTTP ${e.status}`);
+        throw new HttpError(502, "paystack_unavailable");
       }
       await tx.query("INSERT INTO payments (reference, org_id, plan, amount, currency) VALUES ($1, app_current_org(), $2, $3, $4)",
         [reference, plan, amount, currency]);

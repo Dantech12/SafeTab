@@ -5,7 +5,7 @@ import { buildApp } from "../src/app.js";
 import { migrate } from "../src/db/migrate.js";
 import { closePool } from "../src/db/pool.js";
 import { FakeMdmProvider } from "../src/mdm/fake.js";
-import { PaystackRejectedError, type PaystackClient, type PaystackTransaction } from "../src/billing/paystack.js";
+import { PaystackRejectedError, type PaystackClient, type PaystackPlan, type PaystackTransaction } from "../src/billing/paystack.js";
 
 export const OWNER_URL = process.env.DATABASE_OWNER_URL!;
 
@@ -23,6 +23,24 @@ export class FakePaystack implements PaystackClient {
   initialized: any[] = [];
   disabled: string[] = [];
   rejectNextInit?: string;
+  // Plans that exist in the (fake) Paystack account; matches the test .env codes.
+  plans: PaystackPlan[] = [
+    { plan_code: "PLN_test_individual", name: "Test individual", amount: 500, currency: "USD", interval: "monthly" },
+    { plan_code: "PLN_test_organization", name: "Test organization", amount: 2000, currency: "USD", interval: "monthly" },
+  ];
+  async fetchPlan(code: string) {
+    const p = this.plans.find((x) => x.plan_code === code);
+    if (!p) throw new PaystackRejectedError(404, "Plan not found");
+    return p;
+  }
+  async listPlans() {
+    return [...this.plans];
+  }
+  async createPlan(body: { name: string; amount: number; currency: string; interval: "monthly" }) {
+    const p = { plan_code: `PLN_created_${this.plans.length}`, ...body };
+    this.plans.push(p);
+    return p;
+  }
   async initialize(body: any) {
     if (this.rejectNextInit) {
       const msg = this.rejectNextInit;

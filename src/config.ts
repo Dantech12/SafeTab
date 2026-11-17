@@ -13,8 +13,9 @@ const Env = z.object({
   BILLING_CURRENCY: z.string().regex(/^[A-Z]{3}$/).default("GHS"),
   PLAN_INDIVIDUAL_AMOUNT: z.coerce.number().int().positive().default(6000),
   PLAN_ORGANIZATION_AMOUNT: z.coerce.number().int().positive().default(24000),
-  PAYSTACK_PLAN_INDIVIDUAL: z.string().min(1),
-  PAYSTACK_PLAN_ORGANIZATION: z.string().min(1),
+  // Optional: leave empty and SafeTab finds or creates matching Paystack plans itself.
+  PAYSTACK_PLAN_INDIVIDUAL: z.string().default(""),
+  PAYSTACK_PLAN_ORGANIZATION: z.string().default(""),
   BILLING_GRACE_DAYS: z.coerce.number().int().min(0).max(30).default(7),
 
   MDM_PROVIDER: z.enum(["fake", "amapi"]).default("fake"),

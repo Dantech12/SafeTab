@@ -14,6 +14,17 @@ export interface PaystackClient {
   }): Promise<{ authorization_url: string; access_code: string; reference: string }>;
   verify(reference: string): Promise<PaystackTransaction>;
   disableSubscription(code: string, emailToken: string): Promise<void>;
+  fetchPlan(code: string): Promise<PaystackPlan>;
+  listPlans(): Promise<PaystackPlan[]>;
+  createPlan(body: { name: string; amount: number; currency: string; interval: "monthly"; description?: string }): Promise<PaystackPlan>;
+}
+
+export interface PaystackPlan {
+  plan_code: string;
+  name: string;
+  amount: number;
+  currency: string;
+  interval: string;
 }
 
 export interface PaystackTransaction {
@@ -60,6 +71,29 @@ export class HttpPaystackClient implements PaystackClient {
 
   async disableSubscription(code: string, emailToken: string) {
     await this.call("POST", "/subscription/disable", { code, token: emailToken });
+  }
+
+  fetchPlan(code: string) {
+    return this.call<PaystackPlan>("GET", `/plan/${encodeURIComponent(code)}`);
+  }
+
+  async listPlans() {
+    const all: PaystackPlan[] = [];
+    for (let page = 1; page <= 20; page++) {
+      const res = await this.fetchImpl(`${this.baseUrl}/plan?perPage=100&page=${page}`, {
+        headers: { Authorization: `Bearer ${this.secretKey}` },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const json = (await res.json().catch(() => ({}))) as { status?: boolean; message?: string; data?: PaystackPlan[]; meta?: { pageCount?: number } };
+      if (!res.ok || json.status !== true) throw new PaystackRejectedError(res.status, String(json.message ?? "").slice(0, 200));
+      all.push(...(json.data ?? []));
+      if (!json.meta?.pageCount || page >= json.meta.pageCount) break;
+    }
+    return all;
+  }
+
+  createPlan(body: { name: string; amount: number; currency: string; interval: "monthly"; description?: string }) {
+    return this.call<PaystackPlan>("POST", "/plan", body);
   }
 }
 

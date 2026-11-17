@@ -16,7 +16,8 @@
     "test": "vitest run",
     "pilot": "tsx --env-file=.env scripts/pilot.ts",
     "worker": "tsx --env-file=.env src/jobs/worker.ts",
-    "dev:plain": "tsx watch --env-file=.env src/server.ts"
+    "dev:plain": "tsx watch --env-file=.env src/server.ts",
+    "set-pricing": "tsx scripts/set-pricing.ts"
   },
   "dependencies": {
     "@fastify/helmet": "^13.2.0",
