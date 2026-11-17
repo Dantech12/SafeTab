@@ -18,7 +18,7 @@ export async function billingRoutes(app: FastifyInstance) {
     const ctx = await app.userCtx(req);
     requirePerm(ctx, "billing.manage");
     return withTenant(ctx.orgId, async (tx) => {
-      const sub = (await tx.query("SELECT plan, status, current_period_end, grace_until FROM subscriptions")).rows[0];
+      const sub = (await tx.query("SELECT plan, status, current_period_end, grace_until, paystack_subscription_code FROM subscriptions")).rows[0];
       const pricing = planPricing(sub.plan);
       return {
         plan: sub.plan,
@@ -28,6 +28,7 @@ export async function billingRoutes(app: FastifyInstance) {
         currentPeriodEnd: sub.current_period_end,
         graceUntil: sub.grace_until,
         limits: PLAN_LIMITS[sub.plan as Plan],
+        hasPaystackSubscription: !!sub.paystack_subscription_code,
       };
     });
   });
@@ -79,6 +80,34 @@ export async function billingRoutes(app: FastifyInstance) {
       // accessCode opens Paystack's pop-up (InlineJS resumeTransaction); authorizationUrl
       // is the full-page fallback. Neither lets the client change the amount or plan.
       return { accessCode: init.access_code, authorizationUrl: init.authorization_url, reference, plan, amount, currency };
+    });
+  });
+
+  /** Payment history for the billing page (amounts in subunits). */
+  app.get("/v1/orgs/:orgId/billing/history", async (req) => {
+    const ctx = await app.userCtx(req);
+    requirePerm(ctx, "billing.manage");
+    return withTenant(ctx.orgId, async (tx) => ({
+      payments: (await tx.query(
+        `SELECT reference, plan, amount, currency, status, created_at, verified_at FROM payments
+         WHERE status <> 'initialized' OR created_at > now() - interval '1 day'
+         ORDER BY created_at DESC LIMIT 50`)).rows,
+    }));
+  });
+
+  /** Link to Paystack's hosted page for updating the card on the subscription. */
+  app.post("/v1/orgs/:orgId/billing/manage-link", async (req) => {
+    const ctx = await app.userCtx(req);
+    requirePerm(ctx, "billing.manage");
+    return withTenant(ctx.orgId, async (tx) => {
+      const sub = (await tx.query("SELECT paystack_subscription_code FROM subscriptions")).rows[0];
+      if (!sub.paystack_subscription_code) throw new HttpError(409, "no_paystack_subscription");
+      try {
+        return { link: await deps.paystack.manageLink(sub.paystack_subscription_code) };
+      } catch (e) {
+        if (e instanceof PaystackRejectedError) throw new HttpError(502, "paystack_rejected", undefined, e.paystackMessage || `HTTP ${e.status}`);
+        throw new HttpError(502, "paystack_unavailable");
+      }
     });
   });
 

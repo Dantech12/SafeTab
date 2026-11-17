@@ -12,7 +12,7 @@ const SESSION_TTL_MS = 12 * 3600_000;
 const MAX_FAILED = 5;
 const LOCK_MS = 15 * 60_000;
 
-async function issueSession(userId: string) {
+export async function issueSession(userId: string) {
   const token = newToken();
   await q("INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, $3)", [
     userId, hashToken(token), new Date(Date.now() + SESSION_TTL_MS),
@@ -60,6 +60,11 @@ export async function authRoutes(app: FastifyInstance) {
       throw unauthorized("invalid_credentials");
     }
     if (user.locked_until && new Date(user.locked_until) > new Date()) throw unauthorized("invalid_credentials");
+    if (!user.password_hash) {
+      // Account created with Google/Microsoft: there is no password to check.
+      await dummyVerify(body.password);
+      throw unauthorized("use_provider_sign_in");
+    }
     if (!(await verifyPassword(user.password_hash, body.password))) {
       const fails = user.failed_logins + 1;
       await q("UPDATE users SET failed_logins = $2, locked_until = $3 WHERE id = $1", [

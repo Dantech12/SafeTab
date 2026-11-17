@@ -28,6 +28,9 @@ export class FakePaystack implements PaystackClient {
     { plan_code: "PLN_test_individual", name: "Test individual", amount: 500, currency: "USD", interval: "monthly" },
     { plan_code: "PLN_test_organization", name: "Test organization", amount: 2000, currency: "USD", interval: "monthly" },
   ];
+  async manageLink(code: string) {
+    return `https://paystack.test/manage/${code}`;
+  }
   async fetchPlan(code: string) {
     const p = this.plans.find((x) => x.plan_code === code);
     if (!p) throw new PaystackRejectedError(404, "Plan not found");
@@ -69,7 +72,7 @@ export interface TestCtx {
 
 export const PUBSUB_TEST_TOKEN = "Bearer test-pubsub-token";
 
-export async function makeApp(): Promise<TestCtx> {
+export async function makeApp(opts: { oidc?: import("../src/auth/oidc.js").OidcDeps } = {}): Promise<TestCtx> {
   const mdm = new FakeMdmProvider();
   const paystack = new FakePaystack();
   const clock = { now: new Date() };
@@ -78,6 +81,7 @@ export async function makeApp(): Promise<TestCtx> {
     paystack,
     verifyPubSubPush: async (h) => h === PUBSUB_TEST_TOKEN,
     now: () => clock.now,
+    oidc: opts.oidc,
   });
   return { app, mdm, paystack, clock };
 }

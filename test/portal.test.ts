@@ -50,6 +50,20 @@ describe("portal", () => {
     expect(bad.headers.location).toBe("/app");
   });
 
+  it("serves the legal pages Paystack requires, a site icon, and friendly 404s", async () => {
+    for (const path of ["/terms", "/privacy", "/refunds", "/contact"]) {
+      const r = await t.app.inject({ method: "GET", url: path });
+      expect(r.statusCode).toBe(200);
+      expect(r.body).toContain('href="/terms"');
+    }
+    expect((await t.app.inject({ method: "GET", url: "/terms" })).body).toContain("Paystack");
+    expect((await t.app.inject({ method: "GET", url: "/favicon.svg" })).headers["content-type"]).toMatch(/svg/);
+    const page = await t.app.inject({ method: "GET", url: "/no-such-page" });
+    expect(page.statusCode).toBe(404);
+    expect(page.body).toContain("can't find that page");
+    expect((await t.app.inject({ method: "GET", url: "/v1/no-such-endpoint" })).json()).toEqual({ error: "not_found" });
+  });
+
   it("exposes pilot mode and companion status on the org", async () => {
     const org = (await t.app.inject({ method: "GET", url: `/v1/orgs/${admin.orgId}`, headers: auth(admin.token) })).json();
     expect(org.pilotMode).toBe(true);

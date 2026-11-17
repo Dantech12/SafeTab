@@ -19,6 +19,9 @@ import { webhookRoutes } from "./routes/webhooks.js";
 import { androidRoutes } from "./routes/android.js";
 import { portalRoutes } from "./routes/portal.js";
 import { consentRoutes } from "./routes/consent.js";
+import { oauthRoutes } from "./routes/oauth.js";
+import { siteRoutes } from "./routes/site.js";
+import type { OidcDeps } from "./auth/oidc.js";
 
 export interface Deps {
   mdm: MdmProvider;
@@ -26,6 +29,8 @@ export interface Deps {
   /** Verifies the OIDC bearer token on Google Pub/Sub push requests. */
   verifyPubSubPush: (authorizationHeader: string | undefined) => Promise<boolean>;
   now: () => Date;
+  /** Test hooks for Sign in with Google/Microsoft (token endpoint + signing keys). */
+  oidc?: OidcDeps;
 }
 
 declare module "fastify" {
@@ -114,5 +119,7 @@ export async function buildApp(deps: Deps): Promise<FastifyInstance> {
   await app.register(androidRoutes);
   await app.register(portalRoutes);
   await app.register(consentRoutes);
+  await app.register(oauthRoutes);
+  await app.register(siteRoutes);
   return app;
 }

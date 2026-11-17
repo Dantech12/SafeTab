@@ -10,6 +10,8 @@ SafeTab uses only official platform features: Android Enterprise via the Android
 ➡️ **Full design and plan:** [`docs/IMPLEMENTATION_GUIDE.md`](docs/IMPLEMENTATION_GUIDE.md)
 ➡️ **Enroll a real test tablet from your computer:** [`docs/PILOT_SETUP.md`](docs/PILOT_SETUP.md)
 
+➡️ **Turning it into a business (Google/Microsoft sign-in, legal pages, going live):** [`docs/GOING_LIVE.md`](docs/GOING_LIVE.md)
+
 ➡️ **Students' own (parent-owned) tablets:** [`docs/PARENT_OWNED_TABLETS.md`](docs/PARENT_OWNED_TABLETS.md)
 
 > **Status (Nov 2026):** real-device enrollment is **paused**. Google requires approval for this Cloud project (its default enrollment limit blocked our first tablet), and the approval form needs a DUNS number, which we don't have yet. Everything else runs locally. Until then, the free alternatives below cover the school's goal.

@@ -17,6 +17,7 @@ export async function runRetention(ownerUrl: string): Promise<{ usage: number; a
        WHERE a.org_id = o.id AND a.created_at < now() - make_interval(days => o.audit_retention_days)`);
     const sessions = await client.query("DELETE FROM sessions WHERE expires_at < now() - interval '7 days' OR revoked_at < now() - interval '7 days'");
     const webhooks = await client.query("DELETE FROM webhook_events WHERE received_at < now() - interval '30 days'");
+    await client.query("DELETE FROM oauth_states WHERE expires_at < now() - interval '1 day'");
     return { usage: usage.rowCount ?? 0, audit: auditRows.rowCount ?? 0, sessions: sessions.rowCount ?? 0, webhooks: webhooks.rowCount ?? 0 };
   } finally {
     await client.end();

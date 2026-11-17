@@ -139,6 +139,18 @@ describe("renewal failure, grace and read-only", () => {
     expect(b.access).toBe("full");
   });
 
+  it("billing page data: payment history and Paystack's card-update link", async () => {
+    const hist = (await t.app.inject({ method: "GET", url: `/v1/orgs/${fam.orgId}/billing/history`, headers: auth(fam.token) })).json();
+    expect(hist.payments.some((p: any) => p.status === "success" && p.amount === 500)).toBe(true);
+    const b = (await t.app.inject({ method: "GET", url: `/v1/orgs/${fam.orgId}/billing`, headers: auth(fam.token) })).json();
+    expect(b.hasPaystackSubscription).toBe(true);
+    const link = (await t.app.inject({ method: "POST", url: `/v1/orgs/${fam.orgId}/billing/manage-link`, headers: auth(fam.token) })).json();
+    expect(link.link).toBe("https://paystack.test/manage/SUB_test1");
+    // Another workspace without a subscription gets a clear error.
+    const none = await t.app.inject({ method: "POST", url: `/v1/orgs/${school.orgId}/billing/manage-link`, headers: auth(school.token) });
+    expect(none.json().error).toBe("no_paystack_subscription");
+  });
+
   it("ignores webhooks for unknown references without affecting other tenants", async () => {
     const r = await hook({ event: "charge.success", data: { reference: "st_unknown" } });
     expect(r.statusCode).toBe(200);

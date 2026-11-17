@@ -276,3 +276,22 @@ main:has(.auth-screen) { max-width: none; padding: 0; }
 .agree { display: flex; align-items: center; gap: 10px; font-weight: 600; margin: 14px 0 0; cursor: pointer; }
 .agree input { width: 20px; height: 20px; accent-color: var(--accent); margin: 0; }
 #flash.info { color: var(--accent); border-color: var(--accent); }
+
+/* sign in with Google / Microsoft */
+.social { display: grid; gap: 10px; margin-top: 16px; }
+.social:empty { display: none; }
+.social-btn { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 11px 14px; border: 1px solid var(--border-strong); border-radius: 12px; background: #fff; color: var(--text); font-weight: 650; text-decoration: none; transition: background .15s, border-color .15s; }
+.social-btn:hover { background: var(--surface-2); border-color: var(--accent); text-decoration: none; }
+.or { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: .82rem; margin: 6px 0 -6px; }
+.or::before, .or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+/* billing */
+.billing-grid { display: grid; gap: 20px; grid-template-columns: 1.2fr 1fr; }
+.billing-grid .card { margin: 0; }
+.billing-grid + .card { margin-top: 20px; }
+@media (max-width: 860px) { .billing-grid { grid-template-columns: 1fr; } }
+.price-line { font-size: 2.2rem; font-weight: 800; letter-spacing: -.02em; margin: 14px 0 2px; }
+.price-line .muted { font-size: 1rem; font-weight: 600; }
+.plan-limits { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 8px; }
+.plan-limits li { display: flex; gap: 10px; align-items: center; font-size: .94rem; }
+.plan-limits svg.i { color: var(--accent); }

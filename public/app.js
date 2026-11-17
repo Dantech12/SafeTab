@@ -84,6 +84,10 @@ const ERRORS = {
   payments_not_configured: "Paystack isn't set up yet: add your Paystack secret key and plan codes to the .env file, then restart SafeTab.",
   paystack_unavailable: "Couldn't reach Paystack. Check your internet connection and try again.",
   already_active: "Your plan is already active.",
+  use_provider_sign_in: "This account signs in with Google or Microsoft. Use the button above.",
+  oauth_code_expired: "That sign-in link has expired. Please sign in again.",
+  workspace_limit_reached: "You've reached the maximum number of workspaces.",
+  no_paystack_subscription: "There's no Paystack subscription on this workspace yet.",
 };
 
 let flashTimer;
@@ -150,7 +154,7 @@ async function loadSession() {
   try { state.me = await api("GET", "/v1/me"); } catch { return false; }
   const saved = store.get("st_org");
   const org = state.me.orgs.find((o) => o.org_id === saved) || state.me.orgs.find((o) => o.role === "org_admin") || state.me.orgs[0];
-  if (!org) return false;
+  if (!org) return "noorg";
   state.orgId = org.org_id;
   store.set("st_org", state.orgId);
   state.org = await api("GET", orgPath());
@@ -163,6 +167,91 @@ async function loadSession() {
 
 function setActiveNav(key) {
   sidebar.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === key));
+}
+
+// ---------- sign in with Google / Microsoft ----------
+const BRAND = {
+  google: '<svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
+  microsoft: '<svg viewBox="0 0 21 21" width="18" height="18" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>',
+};
+let providersPromise;
+const getProviders = () => (providersPromise ??= fetch("/v1/public/auth-providers").then((r) => r.json()).then((j) => j.providers || []).catch(() => []));
+
+/** Fills <div id="social"> with "Continue with …" buttons for enabled providers. */
+async function renderSocial(next) {
+  const box = app.querySelector("#social");
+  if (!box) return;
+  const providers = await getProviders();
+  if (!providers.length) return;
+  const q = next ? `?next=${encodeURIComponent(next)}` : "";
+  box.innerHTML = providers.map((p) =>
+    `<a class="social-btn" href="/auth/${h(p.id)}/start${q}">${BRAND[p.id] || ""}<span>Continue with ${h(p.name)}</span></a>`).join("") +
+    `<div class="or"><span>or use email</span></div>`;
+}
+
+const OAUTH_ERRORS = {
+  cancelled: "Sign-in was cancelled.",
+  expired: "That sign-in took too long. Please try again.",
+  invalid: "We couldn't verify that sign-in. Please try again.",
+  not_enabled: "That sign-in option isn't available.",
+  provider_unavailable: "The sign-in service didn't respond. Please try again.",
+  no_email: "Your account didn't share an email address, which SafeTab needs.",
+  email_in_use: "An account with this email already exists. Sign in with your password instead.",
+};
+
+async function viewOauthDone(code) {
+  app.innerHTML = `<div class="loader" aria-label="Signing you in"></div>`;
+  let r;
+  try {
+    state.token = null;
+    r = await api("POST", "/v1/auth/oauth/exchange", { code });
+  } catch (e) {
+    location.hash = "#/login";
+    flash(e.message);
+    return;
+  }
+  store.set("st_token", r.token);
+  if (r.orgs.length) store.set("st_org", (r.orgs.find((o) => o.role === "org_admin") || r.orgs[0]).org_id);
+  state.org = null;
+  const target = r.next || store.get("st_next") || "#/";
+  if (!r.orgs.length && !target.startsWith("#/invite/")) {
+    const kind = /(school|family)$/.exec(target)?.[1];
+    if (kind) store.set("st_want_kind", kind);
+    if (target.startsWith("#/subscribe")) store.set("st_next", "#/subscribe");
+    location.hash = "#/welcome";
+    return;
+  }
+  store.set("st_next", null);
+  flash(`Signed in with ${r.providerName}.`, "success");
+  location.hash = target === "#/signup/school" || target === "#/signup/family" ? "#/" : target;
+}
+
+function viewWelcome() {
+  sidebar.hidden = true;
+  const kind = store.get("st_want_kind") || "school";
+  app.innerHTML = authScreen(`
+      <h2>Set up your workspace</h2>
+      <p class="muted small" style="margin:0">One last step. You can invite others and add students next.</p>
+      <form id="welcome" style="margin-top:12px">
+        <label for="w-kind">Who is it for?</label>
+        <select id="w-kind"><option value="school" ${kind === "school" ? "selected" : ""}>A school or organization</option><option value="family" ${kind === "family" ? "selected" : ""}>My family</option></select>
+        <label for="w-name">School or family name</label>
+        <input id="w-name" type="text" required maxlength="200" placeholder="e.g. Little Angels Academy">
+        <div class="row"><button type="submit" class="full">Create workspace</button></div>
+      </form>
+      <p class="muted small auth-foot"><button type="button" class="link" data-action="logout2">Sign out</button></p>`);
+  on("#welcome", "submit", (e) => {
+    e.preventDefault();
+    busy(e.submitter, async () => {
+      state.token = store.get("st_token");
+      const r = await api("POST", "/v1/orgs", { kind: val("#w-kind"), name: val("#w-name") });
+      store.set("st_org", r.orgId);
+      store.set("st_want_kind", null);
+      flash("Workspace created.", "success");
+      await afterAuth();
+    });
+  });
+  on("[data-action=logout2]", "click", () => signOut(true));
 }
 
 // ---------- views ----------
@@ -187,6 +276,7 @@ function viewLogin(opts = {}) {
   app.innerHTML = authScreen(`
       <h2>Welcome</h2>
       <p class="muted small" style="margin:0">Sign in to your school or family workspace.</p>
+      <div id="social" class="social"></div>
       <div class="tabs" role="tablist">
         <button type="button" role="tab" aria-selected="true" data-tab="signin">Sign in</button>
         <button type="button" role="tab" aria-selected="false" data-tab="signup">Create account</button>
@@ -217,6 +307,7 @@ function viewLogin(opts = {}) {
     app.querySelector(".auth h2").insertAdjacentHTML("afterend",
       `<div class="notice info" style="margin-top:12px">${icon("card")}<span>Create your account or sign in — the <strong>Paystack</strong> payment window opens right after.</span></div>`);
   }
+  void renderSocial(store.get("st_next") || (opts.kind ? `#/signup/${opts.kind}` : ""));
   // Links from the product page: /app#/signup/school or /app#/signup/family
   if (opts.signup) {
     app.querySelector("[data-tab=signup]").click();
@@ -752,6 +843,7 @@ function viewInvite(inviteToken) {
       <h2>You've been invited</h2>
       <p class="muted small" style="margin:0">Accept to see your child's school-hours rules and choose whether to agree. Nothing changes on the tablet until you agree.</p>
       ${signedIn ? `<div class="row"><button type="button" class="full" data-action="accept-signed-in">${icon("check")} Accept invitation</button></div>` : `
+      <div id="social" class="social"></div>
       <div class="tabs" role="tablist">
         <button type="button" role="tab" aria-selected="true" data-tab="new">New account</button>
         <button type="button" role="tab" aria-selected="false" data-tab="existing">I have an account</button>
@@ -769,6 +861,7 @@ function viewInvite(inviteToken) {
         <div class="row"><button type="submit" class="full">Sign in & accept</button></div>
       </form>`}`);
 
+  if (!signedIn) void renderSocial(`#/invite/${inviteToken}`);
   const finish = async (r) => {
     if (r.token) store.set("st_token", r.token);
     store.set("st_org", r.orgId);
@@ -883,6 +976,80 @@ async function viewSubscribe() {
   }
 }
 
+async function viewBilling() {
+  setActiveNav("billing");
+  if (!isAdmin()) { location.hash = "#/"; return; }
+  const [b, hist] = await Promise.all([api("GET", orgPath("/billing")), api("GET", orgPath("/billing/history"))]);
+  const planName = b.plan === "organization" ? "Organization" : "Individual";
+  const statusView = {
+    active: ["ok", "Active", `Renews on ${fmtDay(b.currentPeriodEnd)}`],
+    non_renewing: ["warn", "Ends soon", `Access until ${fmtDay(b.currentPeriodEnd)}`],
+    cancelled: ["warn", "Cancelled", b.access === "full" ? `Access until ${fmtDay(b.currentPeriodEnd)}` : "Subscribe again to continue"],
+    past_due: ["bad", "Payment failed", `Update your card before ${fmtDay(b.graceUntil)} to avoid interruption`],
+    lapsed: ["bad", "Inactive", "Changes are paused until you subscribe again. Your data is safe."],
+    none: ["warn", "Not subscribed", "Subscribe to add tablets and set rules"],
+  }[b.status] || ["", b.status, ""];
+  const canPay = b.access !== "full" || b.status === "cancelled" || b.status === "non_renewing";
+  const statusLabel = { success: ["ok", "Paid"], failed: ["bad", "Failed"], abandoned: ["", "Not completed"], initialized: ["warn", "Started"] };
+
+  app.innerHTML = `
+    <div class="page-head"><span class="icon-tile" style="width:48px;height:48px">${icon("card")}</span>
+      <div><h1>Billing</h1><p class="muted">Your plan, payments and card — processed securely by Paystack.</p></div></div>
+
+    <div class="billing-grid">
+      <section class="card plan-card">
+        <div class="row" style="margin:0;justify-content:space-between">
+          <div><div class="eyebrow">Current plan</div><h2 style="font-size:1.4rem;margin-top:4px">${h(planName)}</h2></div>
+          <span class="badge ${statusView[0]}">${h(statusView[1])}</span>
+        </div>
+        <p class="price-line">${h(money(b.price.amount, b.price.currency))}<span class="muted"> / month</span></p>
+        <p class="muted small">${h(statusView[2])}</p>
+        <ul class="plan-limits">
+          <li>${icon("users")} Up to ${h(b.limits.students)} ${b.plan === "organization" ? "students" : "children"}</li>
+          <li>${icon("tablet")} Up to ${h(b.limits.devices)} tablets</li>
+          <li>${icon("shield")} ${h(b.limits.members)} staff logins${b.plan === "organization" ? " + unlimited parent logins" : ""}</li>
+        </ul>
+        <div class="row">
+          ${canPay ? `<button type="button" data-action="pay">${icon("lock")} ${b.status === "none" ? "Subscribe" : "Pay now"} with Paystack</button>` : ""}
+          ${b.hasPaystackSubscription && !canPay ? `<button type="button" class="secondary" data-action="manage">${icon("card")} Update card</button>` : ""}
+          ${b.hasPaystackSubscription && b.status === "active" ? `<button type="button" class="danger" data-action="cancel">${icon("ban")} Cancel subscription</button>` : ""}
+        </div>
+      </section>
+
+      <section class="card">
+        ${section("lock", "Secure payments")}
+        <p class="muted small" style="margin-top:0">You pay on Paystack's secure checkout. SafeTab never sees or stores your card details, and every payment is confirmed directly with Paystack before your plan changes.</p>
+        <ul class="plan-limits">
+          <li>${icon("check")} Cancel any time — keep access until the end of the paid month</li>
+          <li>${icon("check")} ${h(String(7))}-day grace period if a renewal fails</li>
+          <li>${icon("check")} Your data is never deleted because of a missed payment</li>
+        </ul>
+        <p class="small"><a href="/refunds" target="_blank" rel="noopener">Refund policy</a> · <a href="/terms" target="_blank" rel="noopener">Terms</a></p>
+      </section>
+    </div>
+
+    <section class="card">
+      ${section("activity", "Payment history")}
+      ${hist.payments.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Plan</th><th>Amount</th><th>Status</th><th>Reference</th></tr></thead><tbody>
+        ${hist.payments.map((p) => { const [cls, t] = statusLabel[p.status] || ["", p.status]; return `<tr>
+          <td>${h(fmtDay(p.verified_at || p.created_at))}</td><td>${h(p.plan === "organization" ? "Organization" : "Individual")}</td>
+          <td>${h(money(p.amount, p.currency))}</td><td><span class="badge ${cls}">${h(t)}</span></td><td class="small muted"><code>${h(p.reference)}</code></td></tr>`; }).join("")}
+      </tbody></table></div>` : `<p class="muted">No payments yet.</p>`}
+    </section>`;
+
+  on("[data-action=pay]", "click", (e) => busy(e.currentTarget, () => startCheckout()));
+  on("[data-action=manage]", "click", (e) => busy(e.currentTarget, async () => {
+    const r = await api("POST", orgPath("/billing/manage-link"));
+    location.href = r.link; // Paystack-hosted page
+  }));
+  on("[data-action=cancel]", "click", (e) => busy(e.currentTarget, async () => {
+    if (!confirm(`Cancel your subscription? You keep full access until ${fmtDay(b.currentPeriodEnd)}, then your workspace becomes read-only. Your data is kept.`)) return;
+    await api("POST", orgPath("/billing/cancel"));
+    flash("Subscription cancelled. No further payments will be taken.", "success");
+    await route();
+  }));
+}
+
 async function viewBillingReturn(reference) {
   setActiveNav("home");
   app.innerHTML = `<section class="card" style="max-width:520px;margin:40px auto;text-align:center">
@@ -919,15 +1086,25 @@ async function route() {
     if (state.org || (await loadSession())) { location.hash = "#/subscribe"; return; }
     return viewLogin({ signup: true, kind: pick[1], paying: true });
   }
+  const oauth = /^#\/oauth\/([A-Za-z0-9_-]{20,200})$/.exec(hash);
+  if (oauth) return viewOauthDone(oauth[1]);
+  const oerr = /^#\/oauth-error\/([a-z_]+)$/.exec(hash);
+  if (oerr) { viewLogin(); flash(OAUTH_ERRORS[oerr[1]] || "Sign-in failed. Please try again."); return; }
+  if (hash === "#/welcome") { if (!store.get("st_token")) return viewLogin(); return viewWelcome(); }
   const invite = /^#\/invite\/([A-Za-z0-9_-]{20,200})$/.exec(hash);
   if (invite) return viewInvite(invite[1]);
-  if (!state.org && !(await loadSession())) return viewLogin();
+  if (!state.org) {
+    const s = await loadSession();
+    if (s === "noorg") return viewWelcome();
+    if (!s) return viewLogin();
+  }
   try {
     const m = /^#\/student\/([0-9a-f-]{36})$/i.exec(hash);
     if (m) return await viewStudent(m[1]);
     const br = /^#\/billing\/return\/(st_[0-9a-f]{32})$/.exec(hash);
     if (br) return await viewBillingReturn(br[1]);
     if (hash === "#/subscribe") return await viewSubscribe();
+    if (hash === "#/billing") return await viewBilling();
     if (hash === "#/audit") return await viewAudit();
     if (hash === "#/privacy") return await viewPrivacy();
     return await viewHome();

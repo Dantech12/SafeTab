@@ -15,6 +15,8 @@ export interface PaystackClient {
   verify(reference: string): Promise<PaystackTransaction>;
   disableSubscription(code: string, emailToken: string): Promise<void>;
   fetchPlan(code: string): Promise<PaystackPlan>;
+  /** Paystack-hosted page where the customer updates their card or cancels. */
+  manageLink(subscriptionCode: string): Promise<string>;
   listPlans(): Promise<PaystackPlan[]>;
   createPlan(body: { name: string; amount: number; currency: string; interval: "monthly"; description?: string }): Promise<PaystackPlan>;
 }
@@ -71,6 +73,11 @@ export class HttpPaystackClient implements PaystackClient {
 
   async disableSubscription(code: string, emailToken: string) {
     await this.call("POST", "/subscription/disable", { code, token: emailToken });
+  }
+
+  async manageLink(subscriptionCode: string) {
+    const d = await this.call<{ link: string }>("GET", `/subscription/${encodeURIComponent(subscriptionCode)}/manage/link`);
+    return d.link;
   }
 
   fetchPlan(code: string) {

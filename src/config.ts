@@ -38,6 +38,18 @@ const Env = z.object({
   // `npm run worker` separately (production).
   EMBED_SCHEDULER: z.enum(["true", "false"]).optional().transform((v) => v === undefined ? undefined : v === "true"),
   DEVICE_POLL_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
+  // --- Sign in with Google / Microsoft (optional; a button appears when configured) ---
+  GOOGLE_OAUTH_CLIENT_ID: z.string().default(""),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().default(""),
+  MICROSOFT_OAUTH_CLIENT_ID: z.string().default(""),
+  MICROSOFT_OAUTH_CLIENT_SECRET: z.string().default(""),
+
+  // --- Business details shown on the site and legal pages ---
+  BUSINESS_NAME: z.string().default("SafeTab"),
+  SUPPORT_EMAIL: z.string().default(""),
+  BUSINESS_ADDRESS: z.string().default(""),
+  BUSINESS_COUNTRY: z.string().default("Ghana"),
+
   DEFAULT_USAGE_RETENTION_DAYS: z.coerce.number().int().min(1).max(90).default(30),
 });
 
