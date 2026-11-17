@@ -8,3 +8,4 @@ dist/
 coverage/
 pilot-enrollment-qr.png
 .env.backup-*
+.neon
