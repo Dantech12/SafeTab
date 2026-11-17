@@ -7,6 +7,7 @@ import { HttpError } from "../lib/errors.js";
 import { accessLevel, PLAN_LIMITS } from "../billing/entitlements.js";
 import { parsePolicySpec } from "../policy/spec.js";
 import { deployDevicePolicy, loadSpec } from "../policy/deploy.js";
+import { consentStatus } from "../policy/consent.js";
 
 const Uuid = z.string().uuid();
 const StudentParams = z.object({ orgId: Uuid, studentId: Uuid });
@@ -44,7 +45,20 @@ export async function studentRoutes(app: FastifyInstance) {
     requirePerm(ctx, "student.read");
     return withTenant(ctx.orgId, async (tx) => {
       const f = visibleStudents(ctx);
-      const r = await tx.query(`SELECT s.id, s.display_name, s.age_band, s.created_at FROM students s WHERE ${f.sql} ORDER BY s.display_name`, f.params);
+      const r = await tx.query(
+        `SELECT s.id, s.display_name, s.age_band, s.created_at,
+           (SELECT count(*)::int FROM devices d WHERE d.student_id = s.id AND d.state <> 'retired') AS tablets,
+           (SELECT count(*)::int FROM devices d WHERE d.student_id = s.id AND d.state = 'active') AS tablets_active
+         FROM students s WHERE ${f.sql} ORDER BY s.display_name`, f.params);
+      // Parent consent status per student (school workspaces), for the student table.
+      const kind = (await tx.query("SELECT kind FROM organizations")).rows[0].kind;
+      if (kind === "school") {
+        for (const s of r.rows) {
+          const { spec } = await loadSpec(tx, s.id);
+          s.consent = (await consentStatus(tx, s.id, spec)).status;
+          s.has_school_hours = spec.schoolHours.enabled && spec.schoolHours.blockedApps.length > 0;
+        }
+      }
       return { students: r.rows };
     });
   });

@@ -11,6 +11,11 @@ const ICONS = {
   shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
   home: '<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/>',
   clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  chevdown: '<path d="m6 9 6 6 6-6"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  layers: '<path d="m12 2 10 5-10 5L2 7Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/>',
   eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
   activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
@@ -153,6 +158,7 @@ function signOut(callApi = true) {
   store.set("st_token", null);
   store.set("st_org", null);
   sidebar.hidden = true;
+  document.getElementById("appbar").hidden = true;
   location.hash = "#/login";
 }
 
@@ -169,9 +175,40 @@ async function loadSession() {
   sidebar.hidden = false;
   document.getElementById("org-name").textContent = state.org.name;
   document.getElementById("org-avatar").textContent = initials(state.org.name);
-  sidebar.querySelectorAll("[data-admin-only]").forEach((el) => (el.hidden = !isAdmin()));
+  document.querySelectorAll("[data-admin-only]").forEach((el) => (el.hidden = !isAdmin()));
+  const me = state.me.user;
+  document.getElementById("appbar").hidden = false;
+  document.getElementById("user-avatar").textContent = initials(me.display_name);
+  document.getElementById("user-name").textContent = me.display_name;
+  document.getElementById("user-role").textContent = ROLE_LABEL[state.org.myRole] || "";
+  document.getElementById("menu-name").textContent = me.display_name;
+  document.getElementById("menu-email").textContent = me.email;
   return true;
 }
+
+const ROLE_LABEL = { org_admin: "Admin", supervisor: "Teacher / supervisor", guardian: "Parent" };
+
+/** Breadcrumb trail in the top bar: [["Home", "#/"], ["Esi Mensah"]]. */
+function setCrumbs(items) {
+  const el = document.getElementById("crumbs");
+  if (!el) return;
+  el.innerHTML = items.map(([label, href], i) =>
+    (i ? `<span class="sep" aria-hidden="true">/</span>` : "") +
+    (href ? `<a href="${h(href)}">${h(label)}</a>` : `<span aria-current="page">${h(label)}</span>`)).join("");
+}
+
+// Profile menu
+(() => {
+  const btn = document.getElementById("user-btn");
+  const menu = document.getElementById("user-menu");
+  if (!btn || !menu) return;
+  const close = () => { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); };
+  btn.addEventListener("click", (e) => { e.stopPropagation(); const open = menu.hidden; menu.hidden = !open; btn.setAttribute("aria-expanded", String(open)); });
+  document.addEventListener("click", (e) => { if (!menu.contains(e.target)) close(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  menu.addEventListener("click", (e) => { if (e.target.closest("a")) close(); });
+  menu.querySelector("[data-action=logout]")?.addEventListener("click", () => { close(); signOut(true); });
+})();
 
 function setActiveNav(key) {
   sidebar.querySelectorAll("[data-nav]").forEach((a) => a.classList.toggle("active", a.dataset.nav === key));
@@ -264,6 +301,8 @@ function viewWelcome() {
 
 // ---------- views ----------
 function authScreen(inner) {
+  const bar = document.getElementById("appbar");
+  if (bar) bar.hidden = true;
   return `<div class="auth-screen">
     <section class="auth-side">
       <div class="brand"><span class="brand-mark">${icon("shield")}</span><span>SafeTab</span></div>
@@ -365,6 +404,7 @@ const stat = (iconName, tone, value, label) => `
     <div><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div></div>`;
 
 async function viewGuardianHome() {
+  setCrumbs([["Home"]]);
   const students = (await api("GET", orgPath("/students"))).students;
   const consents = await Promise.all(students.map((s) => api("GET", orgPath(`/students/${s.id}/consent`))));
   const first = (state.me?.user?.display_name || "").split(" ")[0];
@@ -384,6 +424,7 @@ async function viewGuardianHome() {
 
 async function viewHome() {
   setActiveNav("home");
+  setCrumbs([["Home"]]);
   if (isGuardian()) return viewGuardianHome();
   const [students, android, billing, devices] = await Promise.all([
     api("GET", orgPath("/students")),
@@ -411,7 +452,7 @@ async function viewHome() {
        </div>`;
 
   const androidBody = android.connected
-    ? `<span class="muted">Connected · <code>${h(android.enterpriseName)}</code></span>`
+    ? `<span class="muted">Connected to Android Enterprise.</span>`
     : !isAdmin() ? `<span class="muted">Ask your organization admin to connect Android.</span>` : `
       <ol class="steps">
         <li><button type="button" class="secondary" data-action="android-signup">${icon("external")} Open Google signup</button></li>
@@ -447,18 +488,43 @@ async function viewHome() {
     </section>` : ""}
 
     <section class="card">
-      <div class="card-head"><span class="icon-tile">${icon("users")}</span><h2>Students</h2><span class="sub muted small">${students.students.length} total</span></div>
-      ${hasStudents ? `<div class="tiles">
-        ${students.students.map((s) => `<a class="tile" href="#/student/${h(s.id)}">${avatar(s.display_name, s.id)}
-          <div class="grow"><div class="name">${h(s.display_name)}</div><div class="muted small">${h(ageLabel(s.age_band))}</div></div>${icon("chevron")}</a>`).join("")}
-      </div>` : `<p class="muted">No students yet.</p>`}
-      ${isAdmin() ? `<form id="add-student" class="row">
-        <input type="text" id="st-name" class="grow" placeholder="Name or nickname" required maxlength="80">
-        <select id="st-age" style="width:auto"><option value="under_13">Under 13</option><option value="13_15" selected>13–15</option><option value="16_17">16–17</option></select>
-        <button type="submit">${icon("plus")} Add student</button>
-      </form><p class="muted small">A nickname is fine — SafeTab never needs a full name or date of birth.</p>` : ""}
+      <div class="card-head"><span class="icon-tile">${icon("users")}</span><h2>Students</h2><span class="sub muted small hide-sm">${students.students.length} total</span>
+        ${isAdmin() ? `<button type="button" class="secondary" data-action="toggle-add" style="margin-left:12px">${icon("plus")} Add student</button>` : ""}</div>
+      ${isAdmin() ? `<form id="add-student" class="inline-form${hasStudents ? "" : " open"}">
+        <div class="row" style="margin-top:0">
+          <input type="text" id="st-name" class="grow" placeholder="Name or nickname" required maxlength="80" aria-label="Student name or nickname">
+          <select id="st-age" style="width:auto" aria-label="Age group"><option value="under_13">Under 13</option><option value="13_15" selected>13–15</option><option value="16_17">16–17</option></select>
+          <button type="submit">${icon("check")} Save student</button>
+        </div>
+        <p class="muted small" style="margin:8px 0 0">A nickname is fine — SafeTab never needs a full name or date of birth.</p>
+      </form>` : ""}
+      ${hasStudents ? `
+        ${students.students.length > 6 ? `<div class="toolbar" style="margin-top:14px"><label class="searchbox">${icon("search")}<input type="search" id="st-search" placeholder="Search students" aria-label="Search students"></label></div>` : ""}
+        <div class="table-wrap"><table class="dtable"><thead><tr><th>Student</th><th>Age group</th><th>Tablets</th>${state.org.kind === "school" ? "<th>Parent consent</th>" : ""}<th></th></tr></thead>
+        <tbody id="st-rows">${students.students.map((s) => `<tr data-href="#/student/${h(s.id)}" data-name="${h(s.display_name.toLowerCase())}">
+          <td><span class="cell-person">${avatar(s.display_name, s.id)}<a href="#/student/${h(s.id)}">${h(s.display_name)}</a></span></td>
+          <td class="muted" data-label="Age group">${h(ageLabel(s.age_band))}</td>
+          <td data-label="Tablets">${!s.tablets ? `<span class="muted small">None</span>` : s.tablets_active === s.tablets
+            ? `<span class="badge ok">${h(s.tablets)} active</span>`
+            : `<span class="badge warn">${h(s.tablets - s.tablets_active)} awaiting setup</span>`}</td>
+          ${state.org.kind === "school" ? `<td data-label="Parent consent">${s.has_school_hours ? consentBadge(s.consent) : `<span class="muted small">No school-hours rules</span>`}</td>` : ""}
+          <td class="go" style="text-align:right">${icon("chevron")}</td></tr>`).join("")}</tbody></table></div>
+        <p class="muted small" id="st-none" hidden>No students match your search.</p>`
+      : `<div class="empty"><span class="icon-tile">${icon("users")}</span><h3>No students yet</h3><p>${isAdmin() ? "Add your first student above to get started." : "Your admin hasn't assigned any students to you yet."}</p></div>`}
     </section>`;
 
+  on("[data-action=toggle-add]", "click", () => {
+    const f = app.querySelector("#add-student");
+    f.classList.toggle("open");
+    if (f.classList.contains("open")) app.querySelector("#st-name").focus();
+  });
+  app.querySelectorAll("#st-rows tr").forEach((tr) => tr.addEventListener("click", (e) => { if (!e.target.closest("a")) location.hash = tr.dataset.href; }));
+  on("#st-search", "input", (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    let shown = 0;
+    app.querySelectorAll("#st-rows tr").forEach((tr) => { const m = tr.dataset.name.includes(q); tr.hidden = !m; if (m) shown++; });
+    app.querySelector("#st-none").hidden = shown > 0;
+  });
   on("[data-action=subscribe]", "click", (e) => busy(e.currentTarget, () => startCheckout()));
   on("[data-action=pilot-activate]", "click", (e) => busy(e.currentTarget, async () => {
     await api("POST", orgPath("/billing/pilot-activate"));
@@ -560,17 +626,86 @@ function deviceList(devices, rolloutById, withActions) {
   }).join("");
 }
 
-async function viewStudent(studentId) {
+// ---------- chip inputs for apps and websites ----------
+const PKG_RE = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z0-9_]+)+$/;
+const DOMAIN_RE = /^(\*\.)?([a-z0-9-]+\.)+[a-z]{2,63}$/;
+function parseApp(v) {
+  v = v.trim();
+  const fromUrl = /[?&]id=([A-Za-z0-9_.]+)/.exec(v); // a Google Play link works too
+  if (fromUrl) v = fromUrl[1];
+  const byName = COMMON_APPS.find(([n]) => n.toLowerCase() === v.toLowerCase());
+  if (byName) v = byName[1];
+  return PKG_RE.test(v) ? v : null;
+}
+function parseDomain(v) {
+  v = v.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/^www\./, "");
+  return DOMAIN_RE.test(v) ? v : null;
+}
+function chipsHtml(values, kind) {
+  if (!values.length) return `<span class="tag-empty">${kind === "app" ? "No apps added" : "No websites added"}</span>`;
+  return values.map((v) => {
+    const label = kind === "app" ? appName(v) : v;
+    const extra = kind === "app" && APP_NAMES[v] ? "" : kind === "app" ? "" : "";
+    return `<span class="tag" data-value="${h(v)}">${h(label)}${extra}<button type="button" aria-label="Remove ${h(label)}">${icon("x")}</button></span>`;
+  }).join("");
+}
+function tagBox(id, values, kind, placeholder, suggestions = []) {
+  return `<div class="tagbox" id="${id}" data-kind="${kind}">
+      <div class="tag-list">${chipsHtml(values, kind)}</div>
+      <div class="tag-add"><input type="text" placeholder="${h(placeholder)}" aria-label="${h(placeholder)}"><button type="button" class="chip">${icon("plus")} Add</button></div>
+    </div>
+    <div class="field-error" hidden></div>
+    ${suggestions.length ? `<div class="suggest" data-for="${id}">Quick add: ${suggestions.map(([n, v]) => `<button type="button" class="chip" data-value="${h(v)}">${icon("plus")} ${h(n)}</button>`).join("")}</div>` : ""}`;
+}
+const tagValues = (id) => [...app.querySelectorAll(`#${id} .tag`)].map((t) => t.dataset.value);
+function wireTagBox(id, onChange) {
+  const box = app.querySelector(`#${id}`);
+  if (!box) return;
+  const kind = box.dataset.kind;
+  const input = box.querySelector("input");
+  const err = box.nextElementSibling;
+  const set = (vals) => { box.querySelector(".tag-list").innerHTML = chipsHtml(vals, kind); onChange(); };
+  const add = (raw) => {
+    const v = kind === "app" ? parseApp(raw) : parseDomain(raw);
+    if (!v) {
+      err.textContent = kind === "app" ? "Enter an app name like TikTok, a Google Play link, or an app ID like com.example.app" : "Enter a website like example.com";
+      err.hidden = false;
+      return;
+    }
+    err.hidden = true;
+    const vals = tagValues(id);
+    if (!vals.includes(v)) set([...vals, v]);
+    input.value = "";
+  };
+  box.addEventListener("click", (e) => {
+    const rm = e.target.closest(".tag button");
+    if (rm) { const v = rm.closest(".tag").dataset.value; set(tagValues(id).filter((x) => x !== v)); return; }
+    if (e.target.closest(".tag-add button")) add(input.value);
+  });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); if (input.value.trim()) add(input.value); } });
+  app.querySelectorAll(`[data-for="${id}"] [data-value]`).forEach((b) => b.addEventListener("click", () => add(b.dataset.value)));
+}
+
+function scheduleSummary(w) {
+  if (!w) return "";
+  const d = [...w.days].sort();
+  const run = d.length > 2 && d.every((x, i) => i === 0 || x === d[i - 1] + 1);
+  return `${run ? `${DAYS[d[0] - 1]}–${DAYS[d[d.length - 1] - 1]}` : d.map((x) => DAYS[x - 1]).join(", ")} · ${w.start}–${w.end}`;
+}
+
+async function viewStudent(studentId, tab = "overview") {
   setActiveNav("home");
   const [student, policy, consent] = await Promise.all([
     api("GET", orgPath(`/students/${studentId}`)),
     api("GET", orgPath(`/students/${studentId}/policy`)),
     api("GET", orgPath(`/students/${studentId}/consent`)),
   ]);
+  setCrumbs([["Home", "#/"], ["Students", "#/"], [student.display_name]]);
   if (isGuardian()) return renderGuardianStudent(studentId, student, policy, consent);
 
   const spec = policy.spec;
   const companionOff = !state.org.companionAppEnabled;
+  const school = isSchool();
   const devices = student.devices.filter((d) => d.state !== "retired");
   const familyDevices = devices.filter((d) => d.ownership === "family_owned");
   const rolloutById = Object.fromEntries(policy.rollout.map((r) => [r.deviceId, r]));
@@ -579,108 +714,122 @@ async function viewStudent(studentId) {
   const shTz = spec.schoolHours.timezone !== "UTC" ? spec.schoolHours.timezone : localTz;
   const win = spec.downtime.windows[0] || { days: [1, 2, 3, 4, 5], start: "21:00", end: "06:30" };
   const shWin = spec.schoolHours.windows[0] || { days: [1, 2, 3, 4, 5], start: "07:30", end: "15:00" };
-  const schoolOnly = isSchool() ? "school-owned tablets only" : "";
+  const schoolOnly = school ? `<span class="badge scope">School-owned tablets only</span>` : "";
+  const base = `#/student/${studentId}`;
 
-  app.innerHTML = `
-    <p><a href="#/" class="small">${icon("back")} All students</a></p>
-    <div class="page-head">${avatar(student.display_name, student.id, "lg")}
-      <div><h1>${h(student.display_name)}</h1><p class="muted">${h(ageLabel(student.age_band))} · ${devices.length} tablet${devices.length === 1 ? "" : "s"}</p></div></div>
+  const head = `
+    <div class="ph"><div class="page-head" style="margin:0">${avatar(student.display_name, student.id, "lg")}
+      <div><h1>${h(student.display_name)}</h1><p class="muted">${h(ageLabel(student.age_band))} · ${devices.length} tablet${devices.length === 1 ? "" : "s"}${school && consent.hasRules ? ` · ${consentBadge(consent.status)}` : ""}</p></div></div></div>
+    <nav class="tabbar" aria-label="Student sections">
+      <a href="${base}" class="${tab === "overview" ? "on" : ""}">${icon("layers")} Overview</a>
+      <a href="${base}/rules" class="${tab === "rules" ? "on" : ""}">${icon("shield")} Rules</a>
+    </nav>`;
 
-    <section class="card">
-      ${section("tablet", "Tablets", "reports every few minutes")}
-      ${deviceList(devices, rolloutById, isAdmin())}
-      ${devices.some((d) => rolloutById[d.id]?.status === "pending") ? `<div class="notice info">${icon("info")}<span>“Rules pending” means the change was sent and SafeTab is waiting for the tablet to confirm it.</span></div>` : ""}
-      ${consent.status === "withdrawn" && familyDevices.length ? `<div class="notice">${icon("alert")}<span>The parent withdrew consent, so school-hours rules have stopped. Retire the parent-owned tablet (${icon("trash")}) to release it — this resets it, so let the family back it up first.</span></div>` : ""}
-      ${isAdmin() ? `<div class="row">
-        <input type="text" id="dev-label" class="grow" placeholder="Tablet name, e.g. Esi's tablet" maxlength="80">
-        <select id="dev-own" style="width:auto">${isSchool()
-          ? `<option value="family_owned">Parent-owned (needs consent)</option><option value="school_owned">School-owned</option>`
-          : `<option value="family_owned">Our family's tablet</option>`}</select>
-        <button type="button" data-action="add-device">${icon("qr")} Add a tablet</button></div>` : ""}
-      <div id="qr-panel"></div>
-    </section>
+  if (tab === "overview") {
+    const active = [];
+    if (spec.schoolHours.enabled && spec.schoolHours.blockedApps.length) active.push(["clock", "School hours", `${scheduleSummary(spec.schoolHours.windows[0])} · ${spec.schoolHours.blockedApps.map(appName).join(", ")} off`]);
+    if (spec.apps.packages.length) active.push(["ban", spec.apps.mode === "allowlist" ? "Only allowed apps" : "Blocked apps", spec.apps.packages.map(appName).join(", ")]);
+    if (spec.web.mode !== "off") active.push(["globe", spec.web.mode === "allowlist" ? "Only allowed websites" : "Blocked websites", spec.web.domains.join(", ") || "None listed"]);
+    if (spec.downtime.enabled) active.push(["moon", "Downtime", scheduleSummary(spec.downtime.windows[0])]);
+    if (spec.usageSummaries.enabled) active.push(["chart", "Screen-time summary", "Daily minutes per app"]);
 
-    ${isSchool() ? `<section class="card">
-      ${section("users", "Parents & consent", "")}
-      <div class="row" style="margin-top:0">${consentBadge(consent.status)}
-        ${consent.consent ? `<span class="muted small">${h(consent.consent.signatureName)} · ${consent.status === "withdrawn" ? `withdrawn ${h(fmtDate(consent.consent.withdrawnAt))}` : `agreed ${h(fmtDate(consent.consent.grantedAt))}`}</span>` : ""}</div>
-      <p class="muted small">Parent-owned tablets get <strong>only</strong> the school-hours rules below, and only after a parent agrees to them in their own SafeTab login. Staff can't agree on a parent's behalf.</p>
-      ${consent.guardians.length ? `<div class="tiles" style="margin-top:8px">${consent.guardians.map((g) => `<div class="tile">${avatar(g.display_name, g.email)}<div class="grow"><div class="name">${h(g.display_name)}</div><div class="muted small">${h(g.email)}</div></div></div>`).join("")}</div>` : `<p class="muted">No parent linked yet.</p>`}
-      ${isAdmin() ? `<form id="invite-parent" class="row">
-        <input type="email" id="parent-email" class="grow" placeholder="Parent's email address" required>
-        <button type="submit" class="secondary">${icon("plus")} Invite parent</button>
-      </form><div id="invite-result"></div>` : ""}
-    </section>` : ""}
-
-    <form id="policy">
-      ${isSchool() ? `<section class="card">
-        ${section("clock", "School hours", h(shTz))}
-        <p class="muted small" style="margin-top:0">Apps switched off during these hours only — not deleted. These are the only rules that apply to parent-owned tablets. Changing them asks parents to agree again.</p>
-        ${consent.hasRules
-          ? `<div class="notice info" style="background:var(--ok-bg);color:var(--ok)">${icon("check")}<span>Saved and ready. Parents can now review and agree to these rules.</span></div>`
-          : `<div class="notice">${icon("alert")}<span><strong>Parents can't agree yet.</strong> Turn the switch on, add at least one app, then click <strong>Save rules</strong>.</span></div>`}
-        <label class="switch"><input type="checkbox" id="sh-on" ${spec.schoolHours.enabled ? "checked" : ""}> Switch off apps during school hours</label>
-        <div class="days">${DAYS.map((d, i) => `<label><input type="checkbox" data-sday="${i + 1}" ${shWin.days.includes(i + 1) ? "checked" : ""}><span>${d}</span></label>`).join("")}</div>
-        <div class="row">
-          <label style="margin:0">From <input type="time" id="sh-start" value="${h(shWin.start)}" style="width:auto;margin-left:6px"></label>
-          <label style="margin:0">until <input type="time" id="sh-end" value="${h(shWin.end)}" style="width:auto;margin-left:6px"></label>
-        </div>
-        <textarea id="sh-apps" style="margin-top:12px" aria-label="Apps to switch off, one per line" placeholder="One app ID per line, e.g. com.zhiliaoapp.musically">${h(spec.schoolHours.blockedApps.join("\n"))}</textarea>
-        <div class="row" style="margin-top:10px">${COMMON_APPS.map(([n, p]) => `<button type="button" class="chip" data-addsh="${h(p)}">${icon("plus")} ${h(n)}</button>`).join("")}</div>
-      </section>` : ""}
-
+    app.innerHTML = head + `
       <section class="card">
-        ${section("ban", "Apps", schoolOnly)}
-        <div class="segmented" role="radiogroup" aria-label="App rule">
-          <label><input type="radio" name="apps-mode" value="blocklist" ${spec.apps.mode === "blocklist" ? "checked" : ""}><span>Block listed apps</span></label>
-          <label><input type="radio" name="apps-mode" value="allowlist" ${spec.apps.mode === "allowlist" ? "checked" : ""}><span>Allow only listed apps</span></label>
-        </div>
-        <textarea id="apps" style="margin-top:12px" aria-label="App IDs, one per line" placeholder="One app ID per line, e.g. com.google.android.youtube">${h(spec.apps.packages.join("\n"))}</textarea>
-        <div class="row" style="margin-top:10px">${COMMON_APPS.map(([n, p]) => `<button type="button" class="chip" data-addapp="${h(p)}">${icon("plus")} ${h(n)}</button>`).join("")}</div>
-        <p class="muted small">Tip: the app ID is in the app's Google Play address, after <code>id=</code>.</p>
+        <div class="card-head"><span class="icon-tile">${icon("tablet")}</span><h2>Tablets</h2><span class="sub muted small">Reports every few minutes</span>
+          ${isAdmin() ? `<button type="button" class="secondary" data-action="toggle-device" style="margin-left:12px">${icon("plus")} Add a tablet</button>` : ""}</div>
+        ${isAdmin() ? `<div id="add-device" class="inline-form${devices.length ? "" : " open"}">
+          <div class="row" style="margin-top:0">
+            <input type="text" id="dev-label" class="grow" placeholder="Tablet name, e.g. ${h(student.display_name.split(" ")[0])}'s tablet" maxlength="80" aria-label="Tablet name">
+            <select id="dev-own" style="width:auto" aria-label="Who owns the tablet">${school
+              ? `<option value="family_owned">Parent-owned (needs consent)</option><option value="school_owned">School-owned</option>`
+              : `<option value="family_owned">Our family's tablet</option>`}</select>
+            <button type="button" data-action="add-device">${icon("qr")} Create QR code</button>
+          </div></div>` : ""}
+        ${devices.length ? deviceList(devices, rolloutById, isAdmin()) : `<div class="empty"><span class="icon-tile">${icon("tablet")}</span><h3>No tablets yet</h3><p>${isAdmin() ? "Create a QR code above, then scan it during the tablet's setup." : "Your admin adds tablets."}</p></div>`}
+        ${devices.some((d) => rolloutById[d.id]?.status === "pending") ? `<div class="notice info">${icon("info")}<span>“Rules pending” means the change was sent and SafeTab is waiting for the tablet to confirm it.</span></div>` : ""}
+        ${consent.status === "withdrawn" && familyDevices.length ? `<div class="notice">${icon("alert")}<span>The parent withdrew consent, so school-hours rules have stopped. Retire the parent-owned tablet to release it — this resets it, so let the family back it up first.</span></div>` : ""}
+        <div id="qr-panel"></div>
       </section>
 
-      <section class="card">
-        ${section("globe", "Websites", isSchool() ? "Chrome · school-owned tablets only" : "Chrome only")}
-        <div class="segmented" role="radiogroup" aria-label="Website rule">
-          ${[["off", "No rules"], ["blocklist", "Block listed sites"], ["allowlist", "Allow only listed sites"]].map(([v, t]) =>
-            `<label><input type="radio" name="web-mode" value="${v}" ${spec.web.mode === v ? "checked" : ""}><span>${t}</span></label>`).join("")}
+      <div class="billing-grid">
+        <section class="card">
+          <div class="card-head"><span class="icon-tile">${icon("shield")}</span><h2>Active rules</h2><a class="sub small" href="${base}/rules">Edit rules →</a></div>
+          ${active.length ? `<ul class="summary-list">${active.map(([ic, t, d]) => `<li><span class="icon-tile">${icon(ic)}</span><div><strong>${h(t)}</strong><span>${h(d)}</span></div></li>`).join("")}</ul>`
+            : `<div class="empty"><span class="icon-tile">${icon("shield")}</span><h3>No rules yet</h3><p><a href="${base}/rules">Set up rules</a> for ${h(student.display_name.split(" ")[0])}'s tablet.</p></div>`}
+        </section>
+        ${school ? `<section class="card">
+          <div class="card-head"><span class="icon-tile">${icon("users")}</span><h2>Parents &amp; consent</h2></div>
+          <div class="row" style="margin-top:0">${consentBadge(consent.status)}
+            ${consent.consent ? `<span class="muted small">${h(consent.consent.signatureName)} · ${consent.status === "withdrawn" ? `withdrawn ${h(fmtDay(consent.consent.withdrawnAt))}` : `agreed ${h(fmtDay(consent.consent.grantedAt))}`}</span>` : ""}</div>
+          <p class="muted small">Parent-owned tablets get only the school-hours rules, and only after a parent agrees in their own login.</p>
+          ${consent.guardians.length ? `<ul class="summary-list">${consent.guardians.map((g) => `<li>${avatar(g.display_name, g.email)}<div><strong>${h(g.display_name)}</strong><span>${h(g.email)}</span></div></li>`).join("")}</ul>` : `<p class="muted">No parent linked yet.</p>`}
+          ${isAdmin() ? `<form id="invite-parent" class="row"><input type="email" id="parent-email" class="grow" placeholder="Parent's email address" required aria-label="Parent's email address"><button type="submit" class="secondary">${icon("plus")} Invite</button></form><div id="invite-result"></div>` : ""}
+        </section>` : ""}
+      </div>`;
+  } else {
+    app.innerHTML = head + `
+      <form id="policy">
+        ${school ? `<section class="card">
+          <div class="rule-head"><span class="icon-tile">${icon("clock")}</span><div><h2>School hours</h2><p>Switch apps off during lessons. Apps aren't deleted. The only rules that apply to parent-owned tablets.</p></div></div>
+          ${consent.hasRules ? "" : `<div class="notice">${icon("info")}<span>Parents can agree once this is switched on with at least one app, and saved.</span></div>`}
+          <label class="switch"><input type="checkbox" id="sh-on" ${spec.schoolHours.enabled ? "checked" : ""}> Switch off apps during school hours</label>
+          <div class="days">${DAYS.map((d, i) => `<label><input type="checkbox" data-sday="${i + 1}" ${shWin.days.includes(i + 1) ? "checked" : ""}><span>${d}</span></label>`).join("")}</div>
+          <div class="row">
+            <label style="margin:0">From <input type="time" id="sh-start" value="${h(shWin.start)}" style="width:auto;margin-left:6px"></label>
+            <label style="margin:0">until <input type="time" id="sh-end" value="${h(shWin.end)}" style="width:auto;margin-left:6px"></label>
+            <span class="muted small">${h(shTz)}</span>
+          </div>
+          <label>Apps to switch off</label>
+          ${tagBox("sh-apps", spec.schoolHours.blockedApps, "app", "Type an app name or paste a Google Play link", COMMON_APPS)}
+          <p class="muted small">Changing these rules asks parents to agree again before they apply to parent-owned tablets.</p>
+        </section>` : ""}
+
+        <section class="card">
+          <div class="rule-head"><span class="icon-tile">${icon("ban")}</span><div><h2>Apps</h2><p>Always-on app rules.</p></div>${schoolOnly}</div>
+          <div class="segmented" role="radiogroup" aria-label="App rule">
+            <label><input type="radio" name="apps-mode" value="blocklist" ${spec.apps.mode === "blocklist" ? "checked" : ""}><span>Block these apps</span></label>
+            <label><input type="radio" name="apps-mode" value="allowlist" ${spec.apps.mode === "allowlist" ? "checked" : ""}><span>Allow only these apps</span></label>
+          </div>
+          <div style="margin-top:12px">${tagBox("apps", spec.apps.packages, "app", "Type an app name or paste a Google Play link", COMMON_APPS)}</div>
+        </section>
+
+        <section class="card">
+          <div class="rule-head"><span class="icon-tile">${icon("globe")}</span><div><h2>Websites</h2><p>Applies in Chrome.</p></div>${schoolOnly}</div>
+          <div class="segmented" role="radiogroup" aria-label="Website rule">
+            ${[["off", "No rules"], ["blocklist", "Block these sites"], ["allowlist", "Allow only these sites"]].map(([v, t]) =>
+              `<label><input type="radio" name="web-mode" value="${v}" ${spec.web.mode === v ? "checked" : ""}><span>${t}</span></label>`).join("")}
+          </div>
+          <div style="margin-top:12px">${tagBox("domains", spec.web.domains, "domain", "Type a website, e.g. example.com")}</div>
+        </section>
+
+        <section class="card">
+          <div class="rule-head"><span class="icon-tile">${icon("moon")}</span><div><h2>Downtime</h2><p>Rest hours, e.g. at night.</p></div>${schoolOnly}</div>
+          ${companionOff ? `<div class="notice">${icon("info")}<span>Downtime needs the SafeTab student app, which isn't available yet. You can set it now — it takes effect once the app is enabled.</span></div>` : ""}
+          <label class="switch"><input type="checkbox" id="dt-on" ${spec.downtime.enabled ? "checked" : ""}> Turn on downtime</label>
+          <div class="days">${DAYS.map((d, i) => `<label><input type="checkbox" data-day="${i + 1}" ${win.days.includes(i + 1) ? "checked" : ""}><span>${d}</span></label>`).join("")}</div>
+          <div class="row">
+            <label style="margin:0">From <input type="time" id="dt-start" value="${h(win.start)}" style="width:auto;margin-left:6px"></label>
+            <label style="margin:0">until <input type="time" id="dt-end" value="${h(win.end)}" style="width:auto;margin-left:6px"></label>
+            <span class="muted small">${h(tz)}</span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="rule-head"><span class="icon-tile">${icon("chart")}</span><div><h2>Screen-time summary</h2><p>Daily minutes per app. Never messages, screens or browsing history.</p></div>${schoolOnly}</div>
+          ${companionOff ? `<div class="notice">${icon("info")}<span>Also needs the SafeTab student app. Nothing is collected until then.</span></div>` : ""}
+          <label class="switch"><input type="checkbox" id="usage-on" ${spec.usageSummaries.enabled ? "checked" : ""}> Collect daily minutes per app</label>
+        </section>
+
+        <div class="savebar" id="savebar">
+          <span class="state" id="save-state">${icon("check")} All changes saved</span>
+          <button type="button" class="secondary" data-action="discard" hidden>Discard</button>
+          <button type="submit">${icon("save")} Save rules</button>
         </div>
-        <textarea id="domains" style="margin-top:12px" aria-label="Website domains, one per line" placeholder="One domain per line, e.g. example.com or *.example.com">${h(spec.web.domains.join("\n"))}</textarea>
-      </section>
+      </form>`;
+  }
 
-      <section class="card">
-        ${section("moon", "Downtime", isSchool() ? `${h(tz)} · school-owned tablets only` : h(tz))}
-        ${companionOff ? `<div class="notice">${icon("info")}<span>Downtime needs the SafeTab student app, which isn't available yet. You can set it now — it takes effect once the app is enabled.</span></div>` : ""}
-        <label class="switch"><input type="checkbox" id="dt-on" ${spec.downtime.enabled ? "checked" : ""}> Turn on downtime</label>
-        <div class="days">${DAYS.map((d, i) => `<label><input type="checkbox" data-day="${i + 1}" ${win.days.includes(i + 1) ? "checked" : ""}><span>${d}</span></label>`).join("")}</div>
-        <div class="row">
-          <label style="margin:0">From <input type="time" id="dt-start" value="${h(win.start)}" style="width:auto;margin-left:6px"></label>
-          <label style="margin:0">until <input type="time" id="dt-end" value="${h(win.end)}" style="width:auto;margin-left:6px"></label>
-        </div>
-      </section>
-
-      <section class="card">
-        ${section("chart", "Screen-time summary", schoolOnly)}
-        ${companionOff ? `<div class="notice">${icon("info")}<span>Also needs the SafeTab student app. Nothing is collected until then.</span></div>` : ""}
-        <label class="switch"><input type="checkbox" id="usage-on" ${spec.usageSummaries.enabled ? "checked" : ""}>
-          <span>Collect daily minutes per app <span class="hint muted small">· never messages, screens or browsing history</span></span></label>
-      </section>
-
-      <div class="savebar">
-        <span class="muted small">${icon("shield")} Rules version ${h(policy.version)}</span>
-        <button type="submit">${icon("save")} Save rules</button>
-      </div>
-    </form>`;
-
-  const addTo = (sel, pkg) => {
-    const ta = app.querySelector(sel);
-    const list = ta.value.split(/\s+/).filter(Boolean);
-    if (!list.includes(pkg)) list.push(pkg);
-    ta.value = list.join("\n");
-  };
-  on("[data-addapp]", "click", (e) => addTo("#apps", e.currentTarget.dataset.addapp));
-  on("[data-addsh]", "click", (e) => addTo("#sh-apps", e.currentTarget.dataset.addsh));
+  // ---- Overview actions ----
+  on("[data-action=toggle-device]", "click", () => { const f = app.querySelector("#add-device"); f.classList.toggle("open"); });
   on("[data-action=add-device]", "click", (e) => busy(e.currentTarget, async () => {
     const r = await api("POST", orgPath(`/students/${studentId}/devices`), { ownership: val("#dev-own"), label: val("#dev-label") || undefined });
     showQr(r);
@@ -709,31 +858,42 @@ async function viewStudent(studentId) {
       box.querySelector("input")?.select();
     });
   });
-  on("#policy", "submit", (e) => {
+
+  // ---- Rules form ----
+  const form = app.querySelector("#policy");
+  if (!form) return;
+  let dirty = false;
+  const markDirty = () => {
+    if (dirty) return;
+    dirty = true;
+    app.querySelector("#savebar").classList.add("dirty");
+    app.querySelector("#save-state").innerHTML = `${icon("edit")} Unsaved changes`;
+    app.querySelector("[data-action=discard]").hidden = false;
+  };
+  form.addEventListener("input", markDirty);
+  form.addEventListener("change", markDirty);
+  ["sh-apps", "apps", "domains"].forEach((id) => wireTagBox(id, markDirty));
+  on("[data-action=discard]", "click", () => route());
+
+  form.addEventListener("submit", (e) => {
     e.preventDefault();
     busy(e.submitter, async () => {
-      const lines = (sel) => val(sel).split(/[\s,]+/).filter(Boolean);
       const days = [...app.querySelectorAll("[data-day]")].filter((c) => c.checked).map((c) => Number(c.dataset.day));
       const newSpec = {
-        apps: { mode: app.querySelector("input[name=apps-mode]:checked").value, packages: lines("#apps") },
-        web: { mode: app.querySelector("input[name=web-mode]:checked").value, domains: lines("#domains") },
-        downtime: {
-          enabled: app.querySelector("#dt-on").checked, timezone: tz,
-          windows: days.length ? [{ days, start: val("#dt-start"), end: val("#dt-end") }] : [],
-        },
+        apps: { mode: app.querySelector("input[name=apps-mode]:checked").value, packages: tagValues("apps") },
+        web: { mode: app.querySelector("input[name=web-mode]:checked").value, domains: tagValues("domains") },
+        downtime: { enabled: app.querySelector("#dt-on").checked, timezone: tz, windows: days.length ? [{ days, start: val("#dt-start"), end: val("#dt-end") }] : [] },
         usageSummaries: { enabled: app.querySelector("#usage-on").checked },
         schoolHours: spec.schoolHours,
       };
       if (app.querySelector("#sh-on")) {
         const sdays = [...app.querySelectorAll("[data-sday]")].filter((c) => c.checked).map((c) => Number(c.dataset.sday));
-        newSpec.schoolHours = {
-          enabled: app.querySelector("#sh-on").checked, timezone: shTz,
-          windows: sdays.length ? [{ days: sdays, start: val("#sh-start"), end: val("#sh-end") }] : [],
-          blockedApps: lines("#sh-apps"),
-        };
+        newSpec.schoolHours = { enabled: app.querySelector("#sh-on").checked, timezone: shTz,
+          windows: sdays.length ? [{ days: sdays, start: val("#sh-start"), end: val("#sh-end") }] : [], blockedApps: tagValues("sh-apps") };
       }
       const r = await api("PUT", orgPath(`/students/${studentId}/policy`), { spec: newSpec, expectedVersion: policy.version });
-      flash(r.deployments.length ? "Saved and sent. Each tablet shows “Rules pending” until it confirms." : "Saved. Rules will be sent when a tablet is added.", "success");
+      dirty = false;
+      flash(r.deployments.length ? "Rules saved and sent. Tablets show “Rules pending” until they confirm." : "Rules saved.", "success");
       await route();
     });
   });
@@ -828,24 +988,44 @@ const ACTION_LABELS = {
   "device.enrolled": "Tablet enrolled", "policy.updated": "Rules changed", "activity.viewed": "Activity viewed",
   "device.marked_lost": "Tablet marked lost", "device.retired": "Tablet retired", "student.exported": "Student data exported",
   "student.deleted": "Student deleted", "member.joined": "Member joined", "invitation.created": "Invitation sent",
+  "consent.granted": "Parent gave consent", "consent.withdrawn": "Parent withdrew consent", "billing.payment_verified": "Payment confirmed",
+  "billing.checkout_started": "Payment started", "billing.cancelled": "Subscription cancelled", "billing.purchase_claimed": "Paid plan activated",
+  "org.android_enterprise_set": "Android connected", "auth.signed_in_with_provider": "Signed in with Google/Microsoft", "org.settings_updated": "Settings changed",
 };
+
+const ACTION_ICON = { "policy.updated": "shield", "consent.granted": "check", "consent.withdrawn": "ban", "activity.viewed": "eye", "student.created": "users",
+  "device.enrollment_created": "qr", "device.enrolled": "tablet", "device.marked_lost": "lock", "device.retired": "trash", "billing.payment_verified": "card",
+  "billing.checkout_started": "card", "billing.cancelled": "card", "billing.purchase_claimed": "card", "billing.pilot_activated": "rocket", "member.joined": "users",
+  "invitation.created": "link", "android.connected": "android", "org.android_enterprise_set": "android", "auth.signed_in_with_provider": "lock" };
+const humanize = (a) => { const t = a.replace(/[._]/g, " "); return t.charAt(0).toUpperCase() + t.slice(1); };
 
 async function viewAudit() {
   setActiveNav("audit");
+  setCrumbs([["Home", "#/"], ["Activity log"]]);
   const r = await api("GET", orgPath("/audit?limit=200"));
+  const byDay = new Map();
+  for (const e of r.entries) {
+    const d = new Date(e.created_at);
+    const key = d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key).push(e);
+  }
+  const who = (e) => e.actor_type === "user" ? (e.actor_name || "A staff member") : e.actor_type === "device" ? "A tablet" : "SafeTab";
   app.innerHTML = `
-    <div class="page-head"><span class="icon-tile" style="width:48px;height:48px">${icon("activity")}</span>
-      <div><h1>Activity log</h1><p class="muted">Every sensitive action — including who viewed a student's activity.</p></div></div>
-    <section class="card"><div class="table-wrap"><table><thead><tr><th>When</th><th>What</th><th>By</th></tr></thead><tbody>
-    ${r.entries.map((e) => `<tr><td class="small muted">${h(fmtDate(e.created_at))}</td>
-      <td><strong>${h(ACTION_LABELS[e.action] || e.action)}</strong>${ACTION_LABELS[e.action] ? `<div class="small muted"><code>${h(e.action)}</code></div>` : ""}</td>
-      <td class="small">${h(e.actor_type === "user" ? "Staff member" : e.actor_type === "device" ? "Tablet" : "System")}</td></tr>`).join("")
-      || `<tr><td colspan="3" class="muted">Nothing yet.</td></tr>`}
-    </tbody></table></div></section>`;
+    <div class="ph"><div><h1>Activity log</h1><p>Every sensitive action, including who viewed a student's information.</p></div></div>
+    <section class="card">
+      ${r.entries.length ? [...byDay].map(([day, items]) => `<div class="day">${h(day)}</div>${items.map((e) => `
+        <div class="event"><span class="icon-tile">${icon(ACTION_ICON[e.action] || "activity")}</span>
+          <div class="what"><strong>${h(ACTION_LABELS[e.action] || humanize(e.action))}</strong>${e.target_name ? ` · ${h(e.target_name)}` : ""}
+            <div class="who">${h(who(e))}</div></div>
+          <time datetime="${h(e.created_at)}">${h(new Date(e.created_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }))}</time></div>`).join("")}`).join("")
+      : `<div class="empty"><span class="icon-tile">${icon("activity")}</span><h3>Nothing yet</h3><p>Actions like adding students or changing rules will appear here.</p></div>`}
+    </section>`;
 }
 
 async function viewPrivacy() {
   setActiveNav("privacy");
+  setCrumbs([["Home", "#/"], ["What we collect"]]);
   const r = await api("GET", orgPath("/data-inventory"));
   app.innerHTML = `
     <div class="page-head"><span class="icon-tile ok" style="width:48px;height:48px">${icon("shield")}</span>
@@ -967,7 +1147,8 @@ async function startCheckout() {
 }
 
 async function viewSubscribe() {
-  setActiveNav("home");
+  setActiveNav("billing");
+  setCrumbs([["Home", "#/"], ["Billing", "#/billing"], ["Subscribe"]]);
   if (!isAdmin()) {
     app.innerHTML = `<section class="card" style="max-width:520px;margin:40px auto;text-align:center"><h2>Only an admin can manage billing</h2>
       <p class="muted">Ask your organization's admin to subscribe.</p><div class="row" style="justify-content:center"><a class="button" href="#/">Go to Home</a></div></section>`;
@@ -1000,6 +1181,7 @@ async function viewSubscribe() {
 
 async function viewBilling() {
   setActiveNav("billing");
+  setCrumbs([["Home", "#/"], ["Billing"]]);
   if (!isAdmin()) { location.hash = "#/"; return; }
   const [b, hist] = await Promise.all([api("GET", orgPath("/billing")), api("GET", orgPath("/billing/history"))]);
   const planName = b.plan === "organization" ? "Organization" : "Individual";
@@ -1215,8 +1397,8 @@ async function route() {
     if (!s) return viewLogin();
   }
   try {
-    const m = /^#\/student\/([0-9a-f-]{36})$/i.exec(hash);
-    if (m) return await viewStudent(m[1]);
+    const m = /^#\/student\/([0-9a-f-]{36})(\/rules)?$/i.exec(hash);
+    if (m) return await viewStudent(m[1], m[2] ? "rules" : "overview");
     const br = /^#\/billing\/return\/(st_[0-9a-f]{32})$/.exec(hash);
     if (br) return await viewBillingReturn(br[1]);
     if (hash === "#/subscribe") return await viewSubscribe();
@@ -1229,6 +1411,6 @@ async function route() {
   }
 }
 
-document.querySelector("[data-action=logout]").addEventListener("click", () => signOut(true));
+// (Sign out lives in the profile menu.)
 window.addEventListener("hashchange", () => { route(); });
 route();

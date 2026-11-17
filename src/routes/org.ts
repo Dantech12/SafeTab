@@ -145,8 +145,11 @@ export async function orgRoutes(app: FastifyInstance) {
     const query = z.object({ limit: z.coerce.number().int().min(1).max(500).default(100), before: z.coerce.number().int().optional() }).parse(req.query);
     return withTenant(ctx.orgId, async (tx) => {
       const r = await tx.query(
-        `SELECT id, actor_type, actor_id, action, target_type, target_id, metadata, created_at
-         FROM audit_log WHERE ($1::bigint IS NULL OR id < $1) ORDER BY id DESC LIMIT $2`,
+        `SELECT a.id, a.actor_type, a.actor_id, a.action, a.target_type, a.target_id, a.metadata, a.created_at,
+           u.display_name AS actor_name,
+           CASE WHEN a.target_type = 'student' THEN (SELECT display_name FROM students s WHERE s.id::text = a.target_id) END AS target_name
+         FROM audit_log a LEFT JOIN users u ON u.id = a.actor_id
+         WHERE ($1::bigint IS NULL OR a.id < $1) ORDER BY a.id DESC LIMIT $2`,
         [query.before ?? null, query.limit],
       );
       return { entries: r.rows };
