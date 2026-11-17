@@ -60,9 +60,25 @@ describe("auto-update", () => {
     git(author, "push", "-q", "origin", `HEAD:refs/heads/${BRANCH}`);
     const r = await checkForUpdates(user, "origin", BRANCH);
     expect(r.updated).toBe(false);
-    expect(r.reason).toMatch(/local edits/);
+    expect(r.reason).toMatch(/you edited app\.txt/);
     expect(readFileSync(path.join(user, "app.txt"), "utf8")).toBe("my local edit\n");
     git(user, "checkout", "--", "app.txt");
+  });
+
+  it("does not let harmless differences block updates: npm's lockfile rewrite and Windows line endings", async () => {
+    commit(author, "package-lock.json", '{"v":1}\n', "lock");
+    commit(author, "notes.txt", "a\nb\n", "notes");
+    git(author, "push", "-q", "origin", `HEAD:refs/heads/${BRANCH}`);
+    expect((await checkForUpdates(user, "origin", BRANCH)).updated).toBe(true);
+
+    writeFileSync(path.join(user, "package-lock.json"), '{"v":1,"rewrittenByNpm":true}\n');
+    writeFileSync(path.join(user, "notes.txt"), "a\r\nb\r\n"); // CRLF only
+    commit(author, "app.txt", "v4\n", "v4");
+    git(author, "push", "-q", "origin", `HEAD:refs/heads/${BRANCH}`);
+    const r = await checkForUpdates(user, "origin", BRANCH);
+    expect(r.updated).toBe(true);
+    expect(r.restoredFiles.sort()).toEqual(["notes.txt", "package-lock.json"]);
+    expect(readFileSync(path.join(user, "app.txt"), "utf8")).toBe("v4\n");
   });
 
   it("refuses to update when the histories have diverged (no merges, no data loss)", async () => {

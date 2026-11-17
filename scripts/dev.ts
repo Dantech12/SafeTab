@@ -9,6 +9,7 @@
  *  - Set AUTO_UPDATE=false in .env to turn this off.
  */
 import { spawn, type ChildProcess } from "node:child_process";
+import path from "node:path";
 import { migrate } from "../src/db/migrate.js";
 import { checkForUpdates } from "./auto-update.js";
 
@@ -21,10 +22,16 @@ const isWindows = process.platform === "win32";
 
 const log = (msg: string) => console.log(`[safetab] ${msg}`);
 
-function sh(cmd: string, args: string[]): Promise<void> {
+// Run npm and tsx through the current Node binary: no shell, so nothing is concatenated
+// into a command line (and no DEP0190 warning on Windows).
+const npmCli = process.env.npm_execpath; // set by `npm run`
+const tsxCli = path.join(cwd, "node_modules", "tsx", "dist", "cli.mjs");
+
+function npm(args: string[]): Promise<void> {
+  if (!npmCli) return Promise.reject(new Error("npm not found; run SafeTab with `npm run dev`"));
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { cwd, stdio: "inherit", shell: isWindows, windowsHide: true });
-    p.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} ${args.join(" ")} exited with ${code}`))));
+    const p = spawn(process.execPath, [npmCli, ...args], { cwd, stdio: "inherit", windowsHide: true });
+    p.on("exit", (code) => (code === 0 ? resolve() : reject(new Error(`npm ${args.join(" ")} exited with ${code}`))));
     p.on("error", reject);
   });
 }
@@ -39,11 +46,11 @@ let server: ChildProcess | undefined;
 function startServer() {
   // Environment (from --env-file=.env) is inherited by the child.
   // Own process group (non-Windows) so a restart stops npx, tsx watch and the server together.
-  server = spawn("npx", ["tsx", "watch", "src/server.ts"], { cwd, stdio: "inherit", shell: isWindows, windowsHide: true, detached: !isWindows });
+  server = spawn(process.execPath, [tsxCli, "watch", "src/server.ts"], { cwd, stdio: "inherit", windowsHide: true, detached: !isWindows });
   server.on("exit", (code, signal) => { if (!stopping && !restarting) log(`server stopped (${signal ?? code})`); });
 }
 
-/** Stops the server and everything it started (npx -> tsx watch -> node). */
+/** Stops the server and everything it started (tsx watch -> node). */
 function stopTree(p: ChildProcess) {
   if (!p.pid) return;
   if (isWindows) spawn("taskkill", ["/pid", String(p.pid), "/T", "/F"], { windowsHide: true });
@@ -76,10 +83,10 @@ async function tick() {
       return;
     }
     log(`auto-update: ${r.reason} (${r.changedFiles.length} file${r.changedFiles.length === 1 ? "" : "s"})`);
-    const needsInstall = r.changedFiles.some((f) => f === "package.json" || f === "package-lock.json");
+    const needsInstall = r.restoredFiles.includes("package-lock.json") || r.changedFiles.some((f) => f === "package.json" || f === "package-lock.json");
     const needsMigrate = r.changedFiles.some((f) => f.startsWith("db/migrations/"));
     const needsRestart = needsInstall || needsMigrate || r.changedFiles.some((f) => f.startsWith("scripts/") || f === ".env.example");
-    if (needsInstall) { log("installing updated packages…"); await sh("npm", ["install", "--no-audit", "--no-fund"]); }
+    if (needsInstall) { log("installing updated packages…"); await npm(["install", "--no-audit", "--no-fund"]); }
     if (needsMigrate) { log("updating the database…"); await applyMigrations(); }
     if (r.changedFiles.some((f) => f === ".env.example")) log("note: .env.example changed — check README for any new settings");
     if (needsRestart) { log("restarting SafeTab…"); await restartServer(); }
