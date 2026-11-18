@@ -18,7 +18,6 @@ beforeAll(async () => {
   await resetDb();
   t = await makeApp();
   admin = await signup(t.app, "it@school.test");
-  studentId = (await t.app.inject({ method: "POST", url: `/v1/orgs/${admin.orgId}/students`, headers: auth(admin.token), payload: { displayName: "Esi", ageBand: "under_13" } })).json().id;
 });
 
 afterAll(async () => {
@@ -29,11 +28,14 @@ afterAll(async () => {
 const url = (p: string) => `/v1/orgs/${admin.orgId}${p}`;
 
 describe("enrollment", () => {
-  it("requires an active subscription and a configured Android enterprise", async () => {
-    let r = await t.app.inject({ method: "POST", url: url(`/students/${studentId}/devices`), headers: auth(admin.token), payload: { ownership: "school_owned" } });
-    expect(r.statusCode).toBe(402);
+  it("requires payment first, then a configured Android enterprise", async () => {
+    // Nothing works until the workspace has paid.
+    const blocked = await t.app.inject({ method: "POST", url: url("/students"), headers: auth(admin.token), payload: { displayName: "Esi", ageBand: "under_13" } });
+    expect(blocked.statusCode).toBe(402);
+    expect(blocked.json().error).toBe("payment_required");
     await activateSubscription(admin.orgId);
-    r = await t.app.inject({ method: "POST", url: url(`/students/${studentId}/devices`), headers: auth(admin.token), payload: { ownership: "school_owned" } });
+    studentId = (await t.app.inject({ method: "POST", url: url("/students"), headers: auth(admin.token), payload: { displayName: "Esi", ageBand: "under_13" } })).json().id;
+    let r = await t.app.inject({ method: "POST", url: url(`/students/${studentId}/devices`), headers: auth(admin.token), payload: { ownership: "school_owned" } });
     expect(r.json().error).toBe("android_enterprise_not_configured");
     await t.app.inject({ method: "PUT", url: url("/android-enterprise"), headers: auth(admin.token), payload: { enterpriseName: ENTERPRISE } });
   });

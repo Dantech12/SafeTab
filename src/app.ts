@@ -3,7 +3,8 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import { ZodError } from "zod";
 import { config } from "./config.js";
-import { q } from "./db/pool.js";
+import { q, withTenant } from "./db/pool.js";
+import { accessLevel } from "./billing/entitlements.js";
 import { HttpError, unauthorized, notFound } from "./lib/errors.js";
 import { hashToken } from "./lib/tokens.js";
 import type { Role, UserCtx } from "./auth/rbac.js";
@@ -52,6 +53,34 @@ function bearer(req: FastifyRequest): string | undefined {
   return h?.startsWith("Bearer ") ? h.slice(7).trim() : undefined;
 }
 
+/**
+ * Until a workspace has paid (or after its paid time and grace period run out), only these
+ * stay open: the workspace shell and billing, so they can pay; and the things people must
+ * always be able to do with their own data and tablets: see what's collected, export or
+ * delete a student, release a tablet, and (for parents) see their child and withdraw consent.
+ */
+const OPEN_WITHOUT_PAYMENT = new Set([
+  "GET /v1/orgs/:orgId",
+  "GET /v1/orgs/:orgId/data-inventory",
+  "GET /v1/orgs/:orgId/students/:studentId/export",
+  "DELETE /v1/orgs/:orgId/students/:studentId",
+  "POST /v1/orgs/:orgId/devices/:deviceId/retire",
+  "POST /v1/orgs/:orgId/devices/:deviceId/lost",
+  "GET /v1/orgs/:orgId/students/:studentId/consent",
+  "POST /v1/orgs/:orgId/students/:studentId/consent/withdraw",
+]);
+
+async function requirePaidUnlessExempt(req: FastifyRequest, orgId: string, role: Role, now: Date) {
+  const route = req.routeOptions.url ?? "";
+  if (route.startsWith("/v1/orgs/:orgId/billing") || OPEN_WITHOUT_PAYMENT.has(`${req.method} ${route}`)) return;
+  // Parents don't pay the school's bill: they can always see their own child's page and
+  // give or withdraw consent. (Rule changes and enrollment stay blocked by plan checks.)
+  if (role === "guardian" && (req.method === "GET" || route.endsWith("/consent") || route.endsWith("/consent/withdraw"))) return;
+  const sub = await withTenant(orgId, async (tx) =>
+    (await tx.query("SELECT plan, status, current_period_end, grace_until FROM subscriptions")).rows[0]);
+  if (!sub || accessLevel(sub, now) !== "full") throw new HttpError(402, "payment_required");
+}
+
 export async function buildApp(deps: Deps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: config().NODE_ENV === "test" ? false : {
@@ -94,7 +123,9 @@ export async function buildApp(deps: Deps): Promise<FastifyInstance> {
     const m = await q("SELECT role FROM lookup_user_memberships($1) WHERE org_id = $2", [userId, orgId]);
     // 404 rather than 403: do not reveal whether another tenant's org exists.
     if (!m.rows[0]) throw notFound("org_not_found");
-    return { userId, orgId, role: m.rows[0].role as Role, ip: req.ip };
+    const role = m.rows[0].role as Role;
+    await requirePaidUnlessExempt(req, orgId, role, app.deps.now());
+    return { userId, orgId, role, ip: req.ip };
   });
 
   app.setErrorHandler((err, req, reply) => {

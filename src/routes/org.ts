@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { accessLevel } from "../billing/entitlements.js";
 import { withTenant } from "../db/pool.js";
 import { requirePerm } from "../auth/rbac.js";
 import { audit } from "../audit.js";
@@ -32,7 +33,10 @@ export async function orgRoutes(app: FastifyInstance) {
     const ctx = await app.userCtx(req);
     return withTenant(ctx.orgId, async (tx) => {
       const o = (await tx.query("SELECT id, kind, name, country, usage_retention_days, audit_retention_days, amapi_enterprise IS NOT NULL AS android_configured FROM organizations")).rows[0];
-      return { ...o, myRole: ctx.role, companionAppEnabled: config().COMPANION_APP_ENABLED, pilotMode: config().NODE_ENV !== "production" };
+      const sub = (await tx.query("SELECT plan, status, current_period_end, grace_until FROM subscriptions")).rows[0];
+      // false => everything except billing is locked until they pay (see app.ts).
+      const paid = !!sub && accessLevel(sub, app.deps.now()) === "full";
+      return { ...o, myRole: ctx.role, paid, everPaid: !!sub && sub.status !== "none", companionAppEnabled: config().COMPANION_APP_ENABLED, pilotMode: config().NODE_ENV !== "production" };
     });
   });
 

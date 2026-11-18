@@ -180,6 +180,7 @@ async function loadSession() {
   document.getElementById("org-name").textContent = state.org.name;
   document.getElementById("org-avatar").textContent = initials(state.org.name);
   document.querySelectorAll("[data-admin-only]").forEach((el) => (el.hidden = !isAdmin()));
+  applyLock();
   const me = state.me.user;
   document.getElementById("appbar").hidden = false;
   document.getElementById("user-avatar").textContent = initials(me.display_name);
@@ -1169,8 +1170,15 @@ async function viewSubscribe() {
   const planName = billing.plan === "organization" ? "Organization" : "Individual";
   const active = billing.access === "full" && billing.status === "active";
   const mismatch = wanted && wanted !== billing.plan;
+  const locked = billing.access !== "full";
   app.innerHTML = `
-    <section class="card" style="max-width:560px;margin:32px auto">
+    ${locked ? `<div class="locked-intro">
+        <h1>${state.org.everPaid ? "Your plan has ended" : "Welcome! One step left"}</h1>
+        <p class="muted">${state.org.everPaid
+          ? "Pay to unlock your workspace again. Nothing has been deleted, and tablets keep the rules they already have."
+          : `Pay to unlock SafeTab and start adding ${billing.plan === "organization" ? "students" : "children"}, tablets and rules.`}</p>
+      </div>` : ""}
+    <section class="card" style="max-width:560px;margin:${locked ? "0" : "32px"} auto 20px">
       ${section("card", `${planName} plan`, "billed monthly")}
       <p style="font-size:2.4rem;font-weight:800;margin:4px 0 2px;letter-spacing:-.02em">${h(money(billing.price.amount, billing.price.currency))}<span class="muted" style="font-size:1rem;font-weight:600"> / month</span></p>
       <p class="muted small">Up to ${h(billing.limits.students)} ${billing.plan === "organization" ? "students" : "children"} and ${h(billing.limits.devices)} tablets.</p>
@@ -1179,9 +1187,16 @@ async function viewSubscribe() {
         ? `<div class="notice" style="background:var(--ok-bg);color:var(--ok)">${icon("check")}<span>Your plan is already active until ${h(fmtDay(billing.currentPeriodEnd))}.</span></div>
            <div class="row"><a class="button" href="#/">Go to Home</a></div>`
         : `${payButtons(billing.price)}
-           <p class="muted small" style="text-align:center;margin-top:10px">You pay in Paystack's secure window — SafeTab never sees your card or Mobile Money details.</p>`}
+           <p class="muted small" style="text-align:center;margin-top:10px">You pay in Paystack's secure window — SafeTab never sees your card or Mobile Money details.</p>
+           ${state.org.pilotMode && locked ? `<div class="row" style="justify-content:center"><button type="button" class="secondary" data-action="pilot-activate">${icon("rocket")} Activate pilot · 30 days, no payment (this PC only)</button></div>` : ""}`}
     </section>`;
   if (!active) wirePayButtons();
+  on("[data-action=pilot-activate]", "click", (e) => busy(e.currentTarget, async () => {
+    await api("POST", orgPath("/billing/pilot-activate"));
+    state.org = await api("GET", orgPath()); applyLock();
+    flash("Pilot activated for 30 days.", "success");
+    location.hash = "#/";
+  }));
 }
 
 /** Mobile Money pays for one month at a time; a card subscription renews itself. */
@@ -1447,6 +1462,7 @@ async function viewBillingReturn(reference) {
   // Paystack's redirect proves nothing by itself; the server asks Paystack directly.
   let result;
   try { result = (await api("POST", orgPath("/billing/verify"), { reference })).result; } catch (e) { result = "error"; }
+  if (result === "success") { state.org = await api("GET", orgPath()); applyLock(); }
   const view = {
     success: ["ok", "check", "Payment confirmed", "Your plan is active. Thank you!"],
     pending: ["warn", "clock", "Payment still processing", "Paystack hasn't confirmed it yet. Refresh this page in a minute; we also confirm automatically when Paystack notifies us."],
@@ -1458,6 +1474,36 @@ async function viewBillingReturn(reference) {
     <span class="icon-tile ${view[0]}" style="width:56px;height:56px;margin:0 auto 12px">${icon(view[1])}</span>
     <h2>${h(view[2])}</h2><p class="muted">${h(view[3])}</p>
     <div class="row" style="justify-content:center"><a class="button" href="#/">Go to Home</a></div></section>`;
+}
+
+/** Shown instead of any page while the workspace hasn't paid (or its paid time ran out). */
+function viewLocked() {
+  setActiveNav("billing");
+  setCrumbs([["Home"]]);
+  const ended = state.org.everPaid;
+  app.innerHTML = `<section class="card locked">
+      <span class="icon-tile">${icon("lock")}</span>
+      <h1>${ended ? "Your plan has ended" : "One step left: choose your plan"}</h1>
+      <p class="muted">${ended
+        ? "Your workspace is locked until you pay again. Nothing has been deleted, and tablets keep the rules they already have."
+        : `Your ${state.org.kind === "school" ? "school" : "family"} workspace is ready. Pay to start adding ${state.org.kind === "school" ? "students" : "children"}, tablets and rules.`}</p>
+      <p class="muted small">Only an admin of this workspace can pay. Please ask them to sign in and complete payment.</p>
+      <div class="row" style="justify-content:center"><a class="button secondary" href="#/privacy">${icon("eye")} What SafeTab collects</a></div>
+    </section>`;
+}
+
+/** Everything except billing (and a few always-available pages) needs a paid workspace. */
+async function paidOrLocked() {
+  if (state.org.paid || state.org.myRole === "guardian") return true; // parents never pay the school's bill
+  state.org = await api("GET", orgPath()); // they may have just paid
+  applyLock();
+  if (state.org.paid) return true;
+  if (isAdmin()) location.hash = "#/subscribe"; else viewLocked();
+  return false;
+}
+function applyLock() {
+  const open = state.org.paid || state.org.myRole === "guardian";
+  document.querySelectorAll("[data-nav=home], [data-nav=audit]").forEach((el) => (el.hidden = !open || (el.dataset.nav === "audit" && !isAdmin())));
 }
 
 // ---------- router ----------
@@ -1496,13 +1542,14 @@ async function route() {
   }
   try {
     const m = /^#\/student\/([0-9a-f-]{36})(\/rules)?$/i.exec(hash);
-    if (m) return await viewStudent(m[1], m[2] ? "rules" : "overview");
+    if (m) { if (!(await paidOrLocked())) return; return await viewStudent(m[1], m[2] ? "rules" : "overview"); }
     const br = /^#\/billing\/return\/(st_[0-9a-f]{32})$/.exec(hash);
     if (br) return await viewBillingReturn(br[1]);
     if (hash === "#/subscribe") return await viewSubscribe();
     if (hash === "#/billing") return await viewBilling();
-    if (hash === "#/audit") return await viewAudit();
     if (hash === "#/privacy") return await viewPrivacy();
+    if (!(await paidOrLocked())) return;
+    if (hash === "#/audit") return await viewAudit();
     return await viewHome();
   } catch (e) {
     flash(e.message || String(e));

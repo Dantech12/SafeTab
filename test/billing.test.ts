@@ -107,7 +107,7 @@ describe("checkout and verification", () => {
 });
 
 describe("renewal failure, grace and read-only", () => {
-  it("past_due keeps full access during grace, then becomes read-only without deleting data", async () => {
+  it("past_due keeps full access during grace, then locks the workspace without deleting data", async () => {
     await t.app.inject({ method: "POST", url: `/v1/orgs/${fam.orgId}/students`, headers: auth(fam.token), payload: { displayName: "Nana", ageBand: "under_13" } });
     await hook({ event: "invoice.payment_failed", data: { subscription: { subscription_code: "SUB_test1" }, customer: { customer_code: "CUS_test1" } } });
     let b = await billing(fam);
@@ -120,13 +120,18 @@ describe("renewal failure, grace and read-only", () => {
     expect(b.status).toBe("lapsed");
     expect(b.access).toBe("read_only");
 
-    const students = (await t.app.inject({ method: "GET", url: `/v1/orgs/${fam.orgId}/students`, headers: auth(fam.token) })).json().students;
-    expect(students).toHaveLength(1); // data still there and readable
+    // Everything is locked until they pay again...
+    const list = await t.app.inject({ method: "GET", url: `/v1/orgs/${fam.orgId}/students`, headers: auth(fam.token) });
+    expect(list.statusCode).toBe(402);
+    expect(list.json().error).toBe("payment_required");
+    const students = (await ownerQuery("SELECT id FROM students WHERE org_id = $1", [fam.orgId])).rows;
+    expect(students).toHaveLength(1); // ...but nothing is deleted
     const put = await t.app.inject({ method: "PUT", url: `/v1/orgs/${fam.orgId}/students/${students[0].id}/policy`, headers: auth(fam.token), payload: { expectedVersion: 0, spec: {} } });
     expect(put.statusCode).toBe(402);
-    expect(put.json().error).toBe("subscription_inactive_read_only");
+    // People can always take their data out, and billing stays open so they can pay.
     const exp = await t.app.inject({ method: "GET", url: `/v1/orgs/${fam.orgId}/students/${students[0].id}/export`, headers: auth(fam.token) });
     expect(exp.statusCode).toBe(200);
+    expect((await t.app.inject({ method: "GET", url: `/v1/orgs/${fam.orgId}/billing`, headers: auth(fam.token) })).statusCode).toBe(200);
   });
 
   it("cancellation disables the Paystack subscription and honours paid time", async () => {

@@ -13,6 +13,7 @@ beforeAll(async () => {
   admin = await signup(t.app, "it@laptop.test");
   other = await signup(t.app, "it@elsewhere.test");
   await activateSubscription(admin.orgId);
+  await activateSubscription(other.orgId);
 });
 
 afterAll(async () => {
