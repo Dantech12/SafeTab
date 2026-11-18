@@ -25,7 +25,7 @@ await app.listen({ port: c.PORT, host: c.NODE_ENV === "production" ? "0.0.0.0" :
 
 // Local pilot convenience: run scheduled jobs here so one window is enough.
 // Production runs `npm run worker` as a separate single instance instead.
-if (c.EMBED_SCHEDULER) startScheduler(mdm, (m) => app.log.info(m));
+if (c.EMBED_SCHEDULER) startScheduler(mdm, mailer, (m) => app.log.info(m));
 console.log(`\nSafeTab: open ${c.PUBLIC_BASE_URL} in your browser`);
 console.log(mailer.configured
   ? "Email: sending through your SMTP service."

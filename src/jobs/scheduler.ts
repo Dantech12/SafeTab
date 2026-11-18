@@ -2,13 +2,15 @@ import { config } from "../config.js";
 import type { MdmProvider } from "../mdm/provider.js";
 import { runDowntimeTick } from "./downtime.js";
 import { pollDeviceStatus } from "./poll-devices.js";
+import { runRenewalReminders } from "./renewal-reminders.js";
+import type { Mailer } from "../lib/mailer.js";
 
 /**
- * Starts the periodic jobs (downtime switching, device status polling).
+ * Starts the periodic jobs (downtime switching, device status polling, renewal reminders).
  * Run in exactly one process: the standalone worker in production, or inside the API
  * server for local pilots so only one window is needed.
  */
-export function startScheduler(mdm: MdmProvider, log: (msg: string) => void = console.log): () => void {
+export function startScheduler(mdm: MdmProvider, mailer: Mailer, log: (msg: string) => void = console.log): () => void {
   const c = config();
   const timers: NodeJS.Timeout[] = [];
 
@@ -31,6 +33,10 @@ export function startScheduler(mdm: MdmProvider, log: (msg: string) => void = co
   }
 
   every(60, "downtime", async () => (await runDowntimeTick(mdm, new Date())) || null);
+  every(3600, "renewal-reminders", async () => {
+    const n = await runRenewalReminders(mailer, new Date(), log);
+    return n ? { reminded: n } : null;
+  });
   if (c.DEVICE_STATUS_MODE === "poll") {
     every(c.DEVICE_POLL_SECONDS, "device-poll", async () => {
       const r = await pollDeviceStatus(mdm, new Date());

@@ -1243,7 +1243,7 @@ async function viewBilling() {
         ${section("lock", "Secure payments")}
         <p class="muted small" style="margin-top:0">You pay on Paystack's secure checkout. SafeTab never sees or stores your card details, and every payment is confirmed directly with Paystack before your plan changes.</p>
         <ul class="plan-limits">
-          <li>${icon("check")} Mobile Money pays one month at a time — nothing is taken automatically</li>
+          <li>${icon("check")} Mobile Money pays one month at a time — nothing is taken automatically, and we email you 3 days before it ends</li>
           <li>${icon("check")} Card plans renew monthly; cancel any time and keep access until the end of the paid month</li>
           <li>${icon("check")} ${h(String(7))}-day grace period if a renewal fails</li>
           <li>${icon("check")} Your data is never deleted because of a missed payment</li>
