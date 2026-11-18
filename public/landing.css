@@ -236,3 +236,8 @@ svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-widt
 .co-legal { color: var(--muted); font-size: .8rem; text-align: center; }
 .co-legal a { text-decoration: underline; }
 .btn[disabled] { opacity: .6; cursor: wait; }
+
+/* Same typeface as the app (Inter, self-hosted). */
+@font-face { font-family: "Inter"; src: url("/fonts/inter-var-latin.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+body { font-family: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif; letter-spacing: -.008em; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { letter-spacing: -.025em; }

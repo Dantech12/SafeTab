@@ -1037,7 +1037,7 @@ async function viewPrivacy() {
   setCrumbs([["Home", "#/"], ["What we collect"]]);
   const r = await api("GET", orgPath("/data-inventory"));
   app.innerHTML = `
-    <div class="page-head"><span class="icon-tile ok" style="width:48px;height:48px">${icon("shield")}</span>
+    <div class="page-head"><span class="icon-tile ok">${icon("shield")}</span>
       <div><h1>What SafeTab collects</h1><p class="muted">The same information students see on their tablet.</p></div></div>
     <section class="card">${section("eye", "Collected")}
       <div class="table-wrap"><table><thead><tr><th>What</th><th>Why</th><th>Who can see it</th><th>Kept for</th></tr></thead><tbody>
@@ -1198,6 +1198,19 @@ function wirePayButtons() {
   app.querySelectorAll("[data-pay]").forEach((b) => b.addEventListener("click", () => busy(b, () => startCheckout(b.dataset.pay))));
 }
 
+/** Two facts a payer looks for first: until when they're covered, and how they pay. */
+function planMeta(b, hist) {
+  const last = hist.payments.find((p) => p.status === "success");
+  const until = b.currentPeriodEnd ? fmtDay(b.currentPeriodEnd) : "—";
+  const how = b.hasPaystackSubscription && b.status === "active" ? "Card · renews automatically"
+    : last?.method === "momo" ? "Mobile Money · pay each month"
+    : last ? "Card" : b.status === "none" ? "Not paid yet" : "Free pilot";
+  return `<dl class="plan-meta">
+      <div><dt>${b.status === "active" && b.hasPaystackSubscription ? "Next renewal" : "Paid until"}</dt><dd>${h(until)}</dd></div>
+      <div><dt>Payment</dt><dd>${h(how)}</dd></div>
+    </dl>`;
+}
+
 async function viewBilling() {
   setActiveNav("billing");
   setCrumbs([["Home", "#/"], ["Billing"]]);
@@ -1216,7 +1229,7 @@ async function viewBilling() {
   const statusLabel = { success: ["ok", "Paid"], failed: ["bad", "Failed"], abandoned: ["", "Not completed"], initialized: ["warn", "Started"] };
 
   app.innerHTML = `
-    <div class="page-head"><span class="icon-tile" style="width:48px;height:48px">${icon("card")}</span>
+    <div class="page-head"><span class="icon-tile">${icon("card")}</span>
       <div><h1>Billing</h1><p class="muted">Your plan, payments and card — processed securely by Paystack.</p></div></div>
 
     <div class="billing-grid">
@@ -1232,6 +1245,7 @@ async function viewBilling() {
           <li>${icon("tablet")} Up to ${h(b.limits.devices)} tablets</li>
           <li>${icon("shield")} ${h(b.limits.members)} staff logins${b.plan === "organization" ? " + unlimited parent logins" : ""}</li>
         </ul>
+        ${planMeta(b, hist)}
         <div class="row">
           ${canPay ? payButtons(b.price) : ""}
           ${b.hasPaystackSubscription && !canPay ? `<button type="button" class="secondary" data-action="manage">${icon("card")} Update card</button>` : ""}
@@ -1258,7 +1272,7 @@ async function viewBilling() {
         ${hist.payments.map((p) => { const [cls, t] = statusLabel[p.status] || ["", p.status]; return `<tr>
           <td>${h(fmtDay(p.verified_at || p.created_at))}</td><td>${h(p.plan === "organization" ? "Organization" : "Individual")}</td>
           <td>${h(money(p.amount, p.currency))}</td><td>${p.method === "momo" ? "Mobile Money" : "Card"}</td><td><span class="badge ${cls}">${h(t)}</span></td><td class="small muted"><code>${h(p.reference)}</code></td></tr>`; }).join("")}
-      </tbody></table></div>` : `<p class="muted">No payments yet.</p>`}
+      </tbody></table></div>` : `<div class="empty-inline">${icon("card")}<span>No payments yet. Your receipts will appear here after your first payment.</span></div>`}
     </section>`;
 
   wirePayButtons();

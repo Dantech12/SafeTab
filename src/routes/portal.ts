@@ -17,11 +17,13 @@ const FILES: Record<string, string> = {
   "/app": "index.html",
   "/app.js": "app.js",
   "/app.css": "app.css",
+  "/fonts/inter-var-latin.woff2": "fonts/inter-var-latin.woff2", // Inter (SIL OFL 1.1), self-hosted
 };
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
+  ".woff2": "font/woff2",
 };
 
 export async function portalRoutes(app: FastifyInstance) {
@@ -31,7 +33,8 @@ export async function portalRoutes(app: FastifyInstance) {
       const body = await readFile(path.join(dir, file));
       return reply
         .type(TYPES[path.extname(file)] ?? "application/octet-stream")
-        .header("cache-control", "no-store")
+        // Fonts never change; pages and scripts always load fresh after an update.
+        .header("cache-control", file.endsWith(".woff2") ? "public, max-age=31536000, immutable" : "no-store")
         .send(body);
     });
   }
