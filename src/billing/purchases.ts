@@ -7,7 +7,7 @@ import { hashToken, newToken } from "../lib/tokens.js";
 import type { Plan } from "./entitlements.js";
 import { PaystackRejectedError, type PaystackClient } from "./paystack.js";
 import { resolvePlanCode } from "./plans.js";
-import { planPricing } from "./service.js";
+import { checkoutOptions, planPricing, type PayMethod } from "./service.js";
 
 /**
  * Pay first, create the account afterwards.
@@ -25,23 +25,25 @@ function paystackError(e: unknown): never {
   throw new HttpError(502, "paystack_unavailable");
 }
 
-export async function createPurchase(paystack: PaystackClient, plan: Plan, email: string, log: (m: string) => void) {
+export async function createPurchase(paystack: PaystackClient, plan: Plan, email: string, method: PayMethod, log: (m: string) => void) {
   const key = config().PAYSTACK_SECRET_KEY;
   if (!key || /REPLACE_ME/.test(key)) throw new HttpError(503, "payments_not_configured");
   const { amount, currency, planCode: configuredCode } = planPricing(plan);
   const reference = `st_${randomUUID().replaceAll("-", "")}`;
   const claimToken = newToken();
-  let planCode: string;
-  try {
-    planCode = await resolvePlanCode(paystack, { plan, amount, currency, configuredCode }, log);
-  } catch (e) { paystackError(e); }
+  let planCode: string | null = null;
+  if (method === "card") {
+    try {
+      planCode = await resolvePlanCode(paystack, { plan, amount, currency, configuredCode }, log);
+    } catch (e) { paystackError(e); }
+  }
   const r = await q(
-    "INSERT INTO purchases (plan, email, amount, currency, reference, claim_token_hash) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-    [plan, email, amount, currency, reference, hashToken(claimToken)]);
+    "INSERT INTO purchases (plan, email, amount, currency, reference, claim_token_hash, method) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+    [plan, email, amount, currency, reference, hashToken(claimToken), method]);
   let init;
   try {
     init = await paystack.initialize({
-      email, amount, currency, plan: planCode, reference,
+      email, amount, currency, reference, ...checkoutOptions(method, planCode),
       callback_url: `${config().PUBLIC_BASE_URL}/checkout/return?ref=${reference}`,
       metadata: { purchase_id: r.rows[0].id, plan },
     });
@@ -49,7 +51,7 @@ export async function createPurchase(paystack: PaystackClient, plan: Plan, email
     await q("UPDATE purchases SET status = 'failed' WHERE reference = $1", [reference]);
     paystackError(e);
   }
-  return { reference, claimToken, accessCode: init.access_code, authorizationUrl: init.authorization_url, amount, currency, plan };
+  return { reference, claimToken, accessCode: init.access_code, authorizationUrl: init.authorization_url, amount, currency, plan, method };
 }
 
 /** Confirms a purchase with Paystack. Safe to call repeatedly. */
@@ -88,8 +90,8 @@ export async function handlePurchaseEvent(event: string, data: any, paystack: Pa
 }
 
 export async function purchaseByToken(claimToken: string) {
-  return (await q("SELECT id, plan, email, amount, currency, status, reference FROM purchases WHERE claim_token_hash = $1",
-    [hashToken(claimToken)])).rows[0] as { id: string; plan: Plan; email: string; amount: number; currency: string; status: string; reference: string } | undefined;
+  return (await q("SELECT id, plan, email, amount, currency, status, reference, method FROM purchases WHERE claim_token_hash = $1",
+    [hashToken(claimToken)])).rows[0] as { id: string; plan: Plan; email: string; amount: number; currency: string; status: string; reference: string; method: PayMethod } | undefined;
 }
 
 /** Attaches a paid purchase to the caller's workspace (inside its tenant transaction). */
@@ -114,17 +116,26 @@ export async function claimPurchase(tx: Tx, paystack: PaystackClient, claimToken
      RETURNING paystack_customer_code, paystack_subscription_code, paystack_email_token, next_payment_date`, [p.id]);
   if (!won.rowCount) throw new HttpError(409, "purchase_already_claimed");
   const w = won.rows[0];
+  if (p.method === "momo") {
+    // One month (added to any time still paid for); paid again by hand, no auto-renewal.
+    const from = sub.current_period_end && new Date(sub.current_period_end) > now ? new Date(sub.current_period_end) : now;
+    await tx.query(
+      `UPDATE subscriptions SET status = 'non_renewing', grace_until = NULL,
+         paystack_customer_code = COALESCE($1, paystack_customer_code), current_period_end = $2, updated_at = now()`,
+      [w.paystack_customer_code, addMonth(from)]);
+  } else {
+    await tx.query(
+      `UPDATE subscriptions SET status = 'active', grace_until = NULL,
+         paystack_customer_code = COALESCE($1, paystack_customer_code),
+         paystack_subscription_code = COALESCE($2, paystack_subscription_code),
+         paystack_email_token = COALESCE($3, paystack_email_token),
+         current_period_end = $4, updated_at = now()`,
+      [w.paystack_customer_code, w.paystack_subscription_code, w.paystack_email_token, w.next_payment_date ?? addMonth(now)]);
+  }
   await tx.query(
-    `UPDATE subscriptions SET status = 'active', grace_until = NULL,
-       paystack_customer_code = COALESCE($1, paystack_customer_code),
-       paystack_subscription_code = COALESCE($2, paystack_subscription_code),
-       paystack_email_token = COALESCE($3, paystack_email_token),
-       current_period_end = $4, updated_at = now()`,
-    [w.paystack_customer_code, w.paystack_subscription_code, w.paystack_email_token, w.next_payment_date ?? addMonth(now)]);
-  await tx.query(
-    `INSERT INTO payments (reference, org_id, plan, amount, currency, status, verified_at)
-     VALUES ($1, app_current_org(), $2, $3, $4, 'success', now()) ON CONFLICT (reference) DO NOTHING`,
-    [p.reference, p.plan, p.amount, p.currency]);
+    `INSERT INTO payments (reference, org_id, plan, amount, currency, status, verified_at, method)
+     VALUES ($1, app_current_org(), $2, $3, $4, 'success', now(), $5) ON CONFLICT (reference) DO NOTHING`,
+    [p.reference, p.plan, p.amount, p.currency, p.method]);
   await audit(tx, { actorType: "user", actorId: userId, action: "billing.purchase_claimed", targetType: "payment", targetId: p.reference });
   return { plan: p.plan };
 }

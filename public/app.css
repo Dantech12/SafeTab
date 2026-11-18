@@ -416,3 +416,7 @@ main { padding-top: 24px; }
   .dtable td:first-child { padding-bottom: 2px; }
   .table-wrap { overflow-x: visible; }
 }
+
+/* Payment method choice (Mobile Money / card) */
+.pay-choices { display: grid; gap: 4px; width: 100%; }
+.pay-choices p { margin: 0 0 10px; text-align: center; }

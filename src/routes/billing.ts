@@ -7,7 +7,7 @@ import { audit } from "../audit.js";
 import { config } from "../config.js";
 import { HttpError } from "../lib/errors.js";
 import { accessLevel, effectiveStatus, PLAN_LIMITS, type Plan } from "../billing/entitlements.js";
-import { confirmPayment, planPricing } from "../billing/service.js";
+import { checkoutOptions, confirmPayment, planPricing } from "../billing/service.js";
 import { PaystackRejectedError } from "../billing/paystack.js";
 import { resolvePlanCode } from "../billing/plans.js";
 import { claimPurchase, confirmPurchase, createPurchase, purchaseByToken } from "../billing/purchases.js";
@@ -38,6 +38,7 @@ export async function billingRoutes(app: FastifyInstance) {
   app.post("/v1/orgs/:orgId/billing/checkout", async (req) => {
     const ctx = await app.userCtx(req);
     requirePerm(ctx, "billing.manage");
+    const { method } = z.object({ method: z.enum(["card", "momo"]).default("card") }).parse(req.body ?? {});
     const reference = `st_${randomUUID().replaceAll("-", "")}`;
     const user = (await q("SELECT email FROM users WHERE id = $1", [ctx.userId])).rows[0];
     return withTenant(ctx.orgId, async (tx) => {
@@ -51,20 +52,20 @@ export async function billingRoutes(app: FastifyInstance) {
         throw new HttpError(503, "payments_not_configured");
       }
       // Use the configured plan if it matches the price, otherwise find/create one.
-      let planCode: string;
-      try {
+      let planCode: string | null = null;
+      if (method === "card") try {
         planCode = await resolvePlanCode(deps.paystack, { plan, amount, currency, configuredCode }, (m) => req.log.info(m));
       } catch (e) {
         req.log.warn({ err: e instanceof Error ? e.message : String(e) }, "paystack plan lookup failed");
         if (e instanceof PaystackRejectedError) throw new HttpError(502, "paystack_rejected", undefined, e.paystackMessage || `HTTP ${e.status}`);
         throw new HttpError(502, "paystack_unavailable");
       }
-      await tx.query("INSERT INTO payments (reference, org_id, plan, amount, currency) VALUES ($1, app_current_org(), $2, $3, $4)",
-        [reference, plan, amount, currency]);
+      await tx.query("INSERT INTO payments (reference, org_id, plan, amount, currency, method) VALUES ($1, app_current_org(), $2, $3, $4, $5)",
+        [reference, plan, amount, currency, method]);
       let init: Awaited<ReturnType<typeof deps.paystack.initialize>>;
       try {
         init = await deps.paystack.initialize({
-          email: user.email, amount, currency, plan: planCode, reference,
+          email: user.email, amount, currency, reference, ...checkoutOptions(method, planCode),
           callback_url: `${config().PUBLIC_BASE_URL}/billing/return?ref=${reference}`,
           metadata: { org_id: ctx.orgId, plan },
         });
@@ -80,7 +81,7 @@ export async function billingRoutes(app: FastifyInstance) {
       await audit(tx, { actorType: "user", actorId: ctx.userId, action: "billing.checkout_started", targetType: "payment", targetId: reference, ip: ctx.ip });
       // accessCode opens Paystack's pop-up (InlineJS resumeTransaction); authorizationUrl
       // is the full-page fallback. Neither lets the client change the amount or plan.
-      return { accessCode: init.access_code, authorizationUrl: init.authorization_url, reference, plan, amount, currency };
+      return { accessCode: init.access_code, authorizationUrl: init.authorization_url, reference, plan, amount, currency, method };
     });
   });
 
@@ -88,8 +89,12 @@ export async function billingRoutes(app: FastifyInstance) {
   const publicLimit = { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } };
 
   app.post("/v1/public/checkout", publicLimit, async (req) => {
-    const body = z.object({ plan: z.enum(["individual", "organization"]), email: z.string().trim().toLowerCase().email().max(254) }).parse(req.body);
-    return createPurchase(deps.paystack, body.plan, body.email, (m) => req.log.info(m));
+    const body = z.object({
+      plan: z.enum(["individual", "organization"]),
+      email: z.string().trim().toLowerCase().email().max(254),
+      method: z.enum(["card", "momo"]).default("card"),
+    }).parse(req.body);
+    return createPurchase(deps.paystack, body.plan, body.email, body.method, (m) => req.log.info(m));
   });
 
   app.post("/v1/public/checkout/status", publicLimit, async (req) => {
@@ -125,7 +130,7 @@ export async function billingRoutes(app: FastifyInstance) {
     requirePerm(ctx, "billing.manage");
     return withTenant(ctx.orgId, async (tx) => ({
       payments: (await tx.query(
-        `SELECT reference, plan, amount, currency, status, created_at, verified_at FROM payments
+        `SELECT reference, plan, amount, currency, status, method, created_at, verified_at FROM payments
          WHERE status <> 'initialized' OR created_at > now() - interval '1 day'
          ORDER BY created_at DESC LIMIT 50`)).rows,
     }));

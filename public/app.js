@@ -21,6 +21,7 @@ const ICONS = {
   logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
   users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
   tablet: '<rect width="16" height="20" x="4" y="2" rx="2"/><path d="M12 18h.01"/>',
+  phone: '<rect width="12" height="20" x="6" y="2" rx="2"/><path d="M11 18h2"/>',
   android: '<path d="M5 16V9a7 7 0 0 1 14 0v7"/><path d="M5 12h14"/><path d="M9 6.5h.01"/><path d="M15 6.5h.01"/><path d="M8 2 9.5 4"/><path d="M16 2l-1.5 2"/><path d="M5 16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2"/>',
   card: '<rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/>',
   check: '<path d="M20 6 9 17l-5-5"/>',
@@ -1137,9 +1138,9 @@ function loadPaystack() {
  * fall back to Paystack's full-page checkout. Payment is only trusted after the server
  * verifies it with Paystack (billing return screen + webhook).
  */
-async function startCheckout() {
+async function startCheckout(method = "momo") {
   flashEl.innerHTML = "";
-  const r = await api("POST", orgPath("/billing/checkout"));
+  const r = await api("POST", orgPath("/billing/checkout"), { method });
   const ok = await loadPaystack();
   if (!ok) { location.href = r.authorizationUrl; return; }
   try {
@@ -1177,14 +1178,24 @@ async function viewSubscribe() {
       ${active
         ? `<div class="notice" style="background:var(--ok-bg);color:var(--ok)">${icon("check")}<span>Your plan is already active until ${h(fmtDay(billing.currentPeriodEnd))}.</span></div>
            <div class="row"><a class="button" href="#/">Go to Home</a></div>`
-        : `<div class="row"><button type="button" class="full" data-action="pay">${icon("lock")} Pay ${h(money(billing.price.amount, billing.price.currency))} with Paystack</button></div>
-           <p class="muted small" style="text-align:center;margin-top:10px">You pay in Paystack's secure window — SafeTab never sees your card details.</p>`}
+        : `${payButtons(billing.price)}
+           <p class="muted small" style="text-align:center;margin-top:10px">You pay in Paystack's secure window — SafeTab never sees your card or Mobile Money details.</p>`}
     </section>`;
-  if (!active) {
-    const btn = app.querySelector("[data-action=pay]");
-    btn.addEventListener("click", () => busy(btn, () => startCheckout()));
-    busy(btn, () => startCheckout()); // open the Paystack window straight away
-  }
+  if (!active) wirePayButtons();
+}
+
+/** Mobile Money pays for one month at a time; a card subscription renews itself. */
+function payButtons(price, label = "Pay") {
+  const amt = h(money(price.amount, price.currency));
+  return `<div class="pay-choices">
+      <button type="button" class="full" data-pay="momo">${icon("phone")} ${label} ${amt} with Mobile Money</button>
+      <p class="muted small">MTN, Telecel or AirtelTigo · pays for 1 month, then you pay again</p>
+      <button type="button" class="full secondary" data-pay="card">${icon("card")} ${label} ${amt} by card</button>
+      <p class="muted small">Visa or Mastercard · renews automatically every month</p>
+    </div>`;
+}
+function wirePayButtons() {
+  app.querySelectorAll("[data-pay]").forEach((b) => b.addEventListener("click", () => busy(b, () => startCheckout(b.dataset.pay))));
 }
 
 async function viewBilling() {
@@ -1195,7 +1206,7 @@ async function viewBilling() {
   const planName = b.plan === "organization" ? "Organization" : "Individual";
   const statusView = {
     active: ["ok", "Active", `Renews on ${fmtDay(b.currentPeriodEnd)}`],
-    non_renewing: ["warn", "Ends soon", `Access until ${fmtDay(b.currentPeriodEnd)}`],
+    non_renewing: ["ok", "Paid", `Paid until ${fmtDay(b.currentPeriodEnd)}. Pay again before then to avoid interruption.`],
     cancelled: ["warn", "Cancelled", b.access === "full" ? `Access until ${fmtDay(b.currentPeriodEnd)}` : "Subscribe again to continue"],
     past_due: ["bad", "Payment failed", `Update your card before ${fmtDay(b.graceUntil)} to avoid interruption`],
     lapsed: ["bad", "Inactive", "Changes are paused until you subscribe again. Your data is safe."],
@@ -1222,7 +1233,7 @@ async function viewBilling() {
           <li>${icon("shield")} ${h(b.limits.members)} staff logins${b.plan === "organization" ? " + unlimited parent logins" : ""}</li>
         </ul>
         <div class="row">
-          ${canPay ? `<button type="button" data-action="pay">${icon("lock")} ${b.status === "none" ? "Subscribe" : "Pay now"} with Paystack</button>` : ""}
+          ${canPay ? payButtons(b.price) : ""}
           ${b.hasPaystackSubscription && !canPay ? `<button type="button" class="secondary" data-action="manage">${icon("card")} Update card</button>` : ""}
           ${b.hasPaystackSubscription && b.status === "active" ? `<button type="button" class="danger" data-action="cancel">${icon("ban")} Cancel subscription</button>` : ""}
         </div>
@@ -1232,7 +1243,8 @@ async function viewBilling() {
         ${section("lock", "Secure payments")}
         <p class="muted small" style="margin-top:0">You pay on Paystack's secure checkout. SafeTab never sees or stores your card details, and every payment is confirmed directly with Paystack before your plan changes.</p>
         <ul class="plan-limits">
-          <li>${icon("check")} Cancel any time — keep access until the end of the paid month</li>
+          <li>${icon("check")} Mobile Money pays one month at a time — nothing is taken automatically</li>
+          <li>${icon("check")} Card plans renew monthly; cancel any time and keep access until the end of the paid month</li>
           <li>${icon("check")} ${h(String(7))}-day grace period if a renewal fails</li>
           <li>${icon("check")} Your data is never deleted because of a missed payment</li>
         </ul>
@@ -1242,14 +1254,14 @@ async function viewBilling() {
 
     <section class="card">
       ${section("activity", "Payment history")}
-      ${hist.payments.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Plan</th><th>Amount</th><th>Status</th><th>Reference</th></tr></thead><tbody>
+      ${hist.payments.length ? `<div class="table-wrap"><table><thead><tr><th>Date</th><th>Plan</th><th>Amount</th><th>Method</th><th>Status</th><th>Reference</th></tr></thead><tbody>
         ${hist.payments.map((p) => { const [cls, t] = statusLabel[p.status] || ["", p.status]; return `<tr>
           <td>${h(fmtDay(p.verified_at || p.created_at))}</td><td>${h(p.plan === "organization" ? "Organization" : "Individual")}</td>
-          <td>${h(money(p.amount, p.currency))}</td><td><span class="badge ${cls}">${h(t)}</span></td><td class="small muted"><code>${h(p.reference)}</code></td></tr>`; }).join("")}
+          <td>${h(money(p.amount, p.currency))}</td><td>${p.method === "momo" ? "Mobile Money" : "Card"}</td><td><span class="badge ${cls}">${h(t)}</span></td><td class="small muted"><code>${h(p.reference)}</code></td></tr>`; }).join("")}
       </tbody></table></div>` : `<p class="muted">No payments yet.</p>`}
     </section>`;
 
-  on("[data-action=pay]", "click", (e) => busy(e.currentTarget, () => startCheckout()));
+  wirePayButtons();
   on("[data-action=manage]", "click", (e) => busy(e.currentTarget, async () => {
     const r = await api("POST", orgPath("/billing/manage-link"));
     location.href = r.link; // Paystack-hosted page

@@ -182,7 +182,7 @@
           <span class="ps-ico" data-icon="lock"></span>
           <div>
             <b>Secure payments by Paystack</b>
-            <p>You pay on Paystack's secure checkout page — SafeTab never sees or stores your card details. Each payment is confirmed directly with Paystack before your plan is activated. Billed monthly in <span data-currency>GHS</span>; available payment methods depend on your country.</p>
+            <p>You pay on Paystack's secure checkout page — SafeTab never sees or stores your card or Mobile Money details. Each payment is confirmed directly with Paystack before your plan is activated. Billed monthly in <span data-currency>GHS</span>. Pay with Mobile Money (MTN, Telecel, AirtelTigo) or card.</p>
           </div>
         </div>
       </div>
@@ -200,7 +200,7 @@
           <details><summary>Our students' tablets belong to their parents. Can we still use SafeTab?</summary><p>Yes, with consent. Parents review the exact school-hours rules and agree in their own login. Only those rules apply to family-owned tablets, and parents can withdraw at any time.</p></details>
           <details><summary>Do tablets need to be reset?</summary><p>Yes, once. Android only allows full management to be set up when a tablet is first set up, so nobody can secretly take over a device in use. Back up photos and files first.</p></details>
           <details><summary>Are apps deleted during school hours?</summary><p>No. Apps are switched off during the hours you choose and come back automatically afterwards, with their data kept.</p></details>
-          <details><summary>How do payments work?</summary><p>You subscribe from your SafeTab workspace and pay on Paystack's secure checkout. Your plan renews monthly. If a payment fails you get a 7-day grace period, and your data is never deleted because of a missed payment.</p></details>
+          <details><summary>How do payments work?</summary><p>You subscribe from your SafeTab workspace and pay on Paystack's secure checkout. Pay with <b>Mobile Money</b> (one month at a time — you pay again each month) or by <b>card</b> (renews automatically every month). If a card payment fails you get a 7-day grace period, and your data is never deleted because of a missed payment.</p></details>
           <details><summary>Which devices are supported?</summary><p>Android tablets and phones that support Android Enterprise. iPads are not supported yet.</p></details>
         </div>
       </div>
@@ -233,7 +233,14 @@
       <span class="co-ico" data-icon="lock"></span>
       <h2 id="co-title">Organization plan</h2>
       <p class="co-price"><span id="co-price">GH₵240</span><small>/month</small></p>
-      <p class="co-note">Pay now — you'll create your account right after. Cancel any time.</p>
+      <p class="co-note">Pay now — you'll create your account right after.</p>
+      <fieldset class="co-methods">
+        <legend>How would you like to pay?</legend>
+        <label class="co-method"><input type="radio" name="co-method" value="momo" checked>
+          <span><b>Mobile Money</b><small>MTN, Telecel or AirtelTigo. Pays for 1 month — you pay again each month.</small></span></label>
+        <label class="co-method"><input type="radio" name="co-method" value="card">
+          <span><b>Card</b><small>Visa or Mastercard. Renews automatically every month. Cancel any time.</small></span></label>
+      </fieldset>
       <label for="co-email">Email for your receipt and account</label>
       <input id="co-email" type="email" required autocomplete="email" placeholder="you@example.com">
       <p id="co-error" class="co-error" role="alert" hidden></p>

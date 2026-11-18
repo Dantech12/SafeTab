@@ -9,7 +9,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
  */
 export interface PaystackClient {
   initialize(body: {
-    email: string; amount: number; currency: string; plan: string; reference: string;
+    email: string; amount: number; currency: string; reference: string;
+    /** Set for card subscriptions. Omitted for one-off (Mobile Money) payments. */
+    plan?: string;
+    /** Payment methods Paystack offers in its window, e.g. ["mobile_money"]. */
+    channels?: string[];
     callback_url: string; metadata: Record<string, unknown>;
   }): Promise<{ authorization_url: string; access_code: string; reference: string }>;
   verify(reference: string): Promise<PaystackTransaction>;

@@ -13,6 +13,16 @@ export function planPricing(plan: Plan) {
     : { amount: c.PLAN_ORGANIZATION_AMOUNT, planCode: c.PAYSTACK_PLAN_ORGANIZATION, currency: c.BILLING_CURRENCY };
 }
 
+export type PayMethod = "card" | "momo";
+
+/**
+ * Card: a Paystack subscription that renews itself monthly (Paystack offers only cards
+ * for subscriptions). Mobile Money: a one-off payment for one month, paid again by hand.
+ */
+export function checkoutOptions(method: PayMethod, planCode: string | null): { plan?: string; channels?: string[] } {
+  return method === "momo" ? { channels: ["mobile_money"] } : { plan: planCode! };
+}
+
 const addMonth = (d: Date) => {
   const n = new Date(d);
   n.setUTCMonth(n.getUTCMonth() + 1);
@@ -49,12 +59,22 @@ export async function confirmPayment(
   if (t.status !== "success") return "pending";
 
   await tx.query("UPDATE payments SET status = 'success', verified_at = $2 WHERE reference = $1", [reference, now]);
-  await tx.query(
-    `UPDATE subscriptions SET plan = $1, status = 'active', grace_until = NULL,
-       paystack_customer_code = COALESCE($2, paystack_customer_code),
-       current_period_end = GREATEST(COALESCE(current_period_end, $3), $3), updated_at = now()`,
-    [payment.plan, t.customer?.customer_code ?? null, addMonth(now)],
-  );
+  if (payment.method === "momo") {
+    // One month, added to any time already paid for. Doesn't renew by itself.
+    await tx.query(
+      `UPDATE subscriptions SET plan = $1, status = 'non_renewing', grace_until = NULL,
+         paystack_customer_code = COALESCE($2, paystack_customer_code),
+         current_period_end = GREATEST(COALESCE(current_period_end, $3), $3) + interval '1 month', updated_at = now()`,
+      [payment.plan, t.customer?.customer_code ?? null, now],
+    );
+  } else {
+    await tx.query(
+      `UPDATE subscriptions SET plan = $1, status = 'active', grace_until = NULL,
+         paystack_customer_code = COALESCE($2, paystack_customer_code),
+         current_period_end = GREATEST(COALESCE(current_period_end, $3), $3), updated_at = now()`,
+      [payment.plan, t.customer?.customer_code ?? null, addMonth(now)],
+    );
+  }
   await audit(tx, { actorType: "system", action: "billing.payment_verified", targetType: "payment", targetId: reference });
   return "success";
 }

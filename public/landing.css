@@ -225,6 +225,13 @@ svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-widt
 .co-body label { font-weight: 650; font-size: .92rem; margin-top: 6px; }
 .co-body input { width: 100%; padding: 12px 14px; border: 1px solid #c9d5ec; border-radius: 12px; font: inherit; }
 .co-body input:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 4px var(--blue-soft); }
+.co-methods { border: none; padding: 0; margin: 4px 0 0; display: grid; gap: 8px; }
+.co-methods legend { font-weight: 650; font-size: .92rem; margin-bottom: 6px; padding: 0; }
+.co-method { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid #c9d5ec; border-radius: 12px; cursor: pointer; margin: 0 !important; font-weight: 400 !important; }
+.co-method:has(input:checked) { border-color: var(--blue); background: var(--blue-softer); box-shadow: 0 0 0 3px var(--blue-soft); }
+.co-method input { width: auto !important; margin-top: 3px; accent-color: var(--blue); }
+.co-method span { display: grid; gap: 2px; }
+.co-method small { color: var(--muted); font-size: .84rem; line-height: 1.35; }
 .co-error { color: var(--bad); background: var(--bad-bg); border-radius: 10px; padding: 10px 12px; font-size: .92rem; }
 .co-legal { color: var(--muted); font-size: .8rem; text-align: center; }
 .co-legal a { text-decoration: underline; }

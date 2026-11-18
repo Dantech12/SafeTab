@@ -107,7 +107,11 @@ coForm?.addEventListener("submit", async (e) => {
   try {
     const res = await fetch("/v1/public/checkout", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ plan: chosenPlan, email: document.getElementById("co-email").value.trim() }),
+      body: JSON.stringify({
+        plan: chosenPlan,
+        email: document.getElementById("co-email").value.trim(),
+        method: coForm.querySelector("input[name=co-method]:checked")?.value || "momo",
+      }),
     });
     const r = await res.json().catch(() => ({}));
     if (!res.ok) {
