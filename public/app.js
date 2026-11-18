@@ -285,7 +285,7 @@ function viewWelcome() {
         <label for="w-kind">Who is it for?</label>
         <select id="w-kind"><option value="school" ${kind === "school" ? "selected" : ""}>A school or organization</option><option value="family" ${kind === "family" ? "selected" : ""}>My family</option></select>
         <label for="w-name">School or family name</label>
-        <input id="w-name" type="text" required maxlength="200" placeholder="e.g. Little Angels Academy">
+        <input id="w-name" type="text" required maxlength="200" placeholder="e.g. Brightfield Academy">
         <div class="row"><button type="submit" class="full">Create workspace</button></div>
       </form>
       <p class="muted small auth-foot"><button type="button" class="link" data-action="logout2">Sign out</button></p>`);

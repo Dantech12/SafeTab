@@ -74,7 +74,7 @@ describe("forgot password", () => {
 
 describe("invitation emails", () => {
   it("emails parents a clear invitation with the link", async () => {
-    const admin = await signup(t.app, "it@angels.test");
+    const admin = await signup(t.app, "it@brightfield.test");
     const s = (await t.app.inject({ method: "POST", url: `/v1/orgs/${admin.orgId}/students`, headers: auth(admin.token), payload: { displayName: "Esi Mensah", ageBand: "13_15" } })).json();
     const r = await t.app.inject({ method: "POST", url: `/v1/orgs/${admin.orgId}/invitations`, headers: auth(admin.token), payload: { email: "abena@family.test", role: "guardian", studentId: s.id } });
     expect(r.json().emailed).toBe(true);

@@ -69,11 +69,11 @@ describe("Sign in with Google / Microsoft", () => {
     expect(ex.json()).toMatchObject({ next: "#/subscribe/school", orgs: [], providerName: "Google" });
     // New user: no workspace yet -> they create one.
     const token = ex.json().token;
-    const org = await t.app.inject({ method: "POST", url: "/v1/orgs", headers: auth(token), payload: { kind: "school", name: "Little Angels Academy" } });
+    const org = await t.app.inject({ method: "POST", url: "/v1/orgs", headers: auth(token), payload: { kind: "school", name: "Brightfield Academy" } });
     expect(org.statusCode).toBe(201);
     const me = (await t.app.inject({ method: "GET", url: "/v1/me", headers: auth(token) })).json();
     expect(me.user.email).toBe("ama@example.test");
-    expect(me.orgs[0].org_name).toBe("Little Angels Academy");
+    expect(me.orgs[0].org_name).toBe("Brightfield Academy");
     // One-time code can't be reused.
     expect((await t.app.inject({ method: "POST", url: "/v1/auth/oauth/exchange", payload: { code } })).json().error).toBe("oauth_code_expired");
   });
