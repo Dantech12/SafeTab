@@ -126,7 +126,7 @@ coForm?.addEventListener("submit", async (e) => {
     try {
       new window.PaystackPop().resumeTransaction(r.accessCode, {
         onSuccess: () => { location.href = next; },
-        onCancel: () => { dialog.showModal(); showErr("Payment window closed. No payment was taken — you can try again."); },
+        onCancel: () => { dialog.showModal(); showErr("Payment window closed. No payment was taken, so you can try again."); },
         onError: () => { location.href = r.authorizationUrl; },
       });
     } catch { location.href = r.authorizationUrl; }

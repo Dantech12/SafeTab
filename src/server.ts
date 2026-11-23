@@ -29,4 +29,4 @@ if (c.EMBED_SCHEDULER) startScheduler(mdm, mailer, (m) => app.log.info(m));
 console.log(`\nSafeTab: open ${c.PUBLIC_BASE_URL} in your browser`);
 console.log(mailer.configured
   ? "Email: sending through your SMTP service."
-  : "Email: no email service set up yet — emails (e.g. password reset links) are printed here instead. Run `npm run set-email` to set one up.\n");
+  : "Email: no email service set up yet, so emails (e.g. password reset links) are printed here instead. Run `npm run set-email` to set one up.\n");

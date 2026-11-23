@@ -49,8 +49,8 @@ document.querySelectorAll("[data-icon]").forEach((el) => (el.innerHTML = icon(el
 
 // ---------- helpers ----------
 const h = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
-const fmtDay = (v) => (v ? new Date(v).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—");
+const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "Never");
+const fmtDay = (v) => (v ? new Date(v).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "Not set");
 const money = (subunits, currency) => {
   try { return new Intl.NumberFormat("en-US", { style: "currency", currency, currencyDisplay: "narrowSymbol", maximumFractionDigits: subunits % 100 ? 2 : 0 }).format(subunits / 100); }
   catch { return `${currency} ${(subunits / 100).toFixed(2)}`; }
@@ -316,7 +316,7 @@ function authScreen(inner) {
       <ul class="auth-points">
         <li>${icon("check")}<span>Apps switched off during school hours only</span></li>
         <li>${icon("check")}<span>Parents agree before anything applies to their tablet</span></li>
-        <li>${icon("check")}<span>No messages, screens, cameras or locations — ever</span></li>
+        <li>${icon("check")}<span>No messages, screens, cameras or locations, ever</span></li>
       </ul>
     </section>
     <section class="auth-main"><div class="auth">${inner}</div></section>
@@ -372,7 +372,7 @@ function viewLogin(opts = {}) {
   }
   if (opts.paying) {
     app.querySelector(".auth h2").insertAdjacentHTML("afterend",
-      `<div class="notice info" style="margin-top:12px">${icon("card")}<span>Create your account or sign in — the <strong>Paystack</strong> payment window opens right after.</span></div>`);
+      `<div class="notice info" style="margin-top:12px">${icon("card")}<span>Create your account or sign in. The <strong>Paystack</strong> payment window opens right after.</span></div>`);
   }
   void renderSocial(store.get("st_next") || (opts.kind ? `#/signup/${opts.kind}` : ""));
   // Links from the product page: /app#/signup/school or /app#/signup/family
@@ -474,7 +474,7 @@ async function viewHome() {
     <section class="hero">
       <div class="eyebrow">${state.org.kind === "school" ? "School workspace" : "Family workspace"}</div>
       <h1>${first ? `Welcome back, ${h(first)}` : h(state.org.name)}</h1>
-      <p>${h(state.org.name)} · Manage tablets transparently — students can always see what's managed and why.</p>
+      <p>${h(state.org.name)} · Manage tablets openly. Students can always see what's managed and why.</p>
     </section>
 
     <div class="stats">
@@ -502,7 +502,7 @@ async function viewHome() {
           <select id="st-age" style="width:auto" aria-label="Age group"><option value="under_13">Under 13</option><option value="13_15" selected>13–15</option><option value="16_17">16–17</option></select>
           <button type="submit">${icon("check")} Save student</button>
         </div>
-        <p class="muted small" style="margin:8px 0 0">A nickname is fine — SafeTab never needs a full name or date of birth.</p>
+        <p class="muted small" style="margin:8px 0 0">A nickname is fine. SafeTab never needs a full name or date of birth.</p>
       </form>` : ""}
       ${hasStudents ? `
         ${students.students.length > 6 ? `<div class="toolbar" style="margin-top:14px"><label class="searchbox">${icon("search")}<input type="search" id="st-search" placeholder="Search students" aria-label="Search students"></label></div>` : ""}
@@ -753,7 +753,7 @@ async function viewStudent(studentId, tab = "overview") {
           </div></div>` : ""}
         ${devices.length ? deviceList(devices, rolloutById, isAdmin()) : `<div class="empty"><span class="icon-tile">${icon("tablet")}</span><h3>No tablets yet</h3><p>${isAdmin() ? "Create a QR code above, then scan it during the tablet's setup." : "Your admin adds tablets."}</p></div>`}
         ${devices.some((d) => rolloutById[d.id]?.status === "pending") ? `<div class="notice info">${icon("info")}<span>“Rules pending” means the change was sent and SafeTab is waiting for the tablet to confirm it.</span></div>` : ""}
-        ${consent.status === "withdrawn" && familyDevices.length ? `<div class="notice">${icon("alert")}<span>The parent withdrew consent, so school-hours rules have stopped. Retire the parent-owned tablet to release it — this resets it, so let the family back it up first.</span></div>` : ""}
+        ${consent.status === "withdrawn" && familyDevices.length ? `<div class="notice">${icon("alert")}<span>The parent withdrew consent, so school-hours rules have stopped. Retire the parent-owned tablet to release it. This resets it, so let the family back it up first.</span></div>` : ""}
         <div id="qr-panel"></div>
       </section>
 
@@ -810,7 +810,7 @@ async function viewStudent(studentId, tab = "overview") {
 
         <section class="card">
           <div class="rule-head"><span class="icon-tile">${icon("moon")}</span><div><h2>Downtime</h2><p>Rest hours, e.g. at night.</p></div>${schoolOnly}</div>
-          ${companionOff ? `<div class="notice">${icon("info")}<span>Downtime needs the SafeTab student app, which isn't available yet. You can set it now — it takes effect once the app is enabled.</span></div>` : ""}
+          ${companionOff ? `<div class="notice">${icon("info")}<span>Downtime needs the SafeTab student app, which isn't available yet. You can set it now and it will take effect once the app is enabled.</span></div>` : ""}
           <label class="switch"><input type="checkbox" id="dt-on" ${spec.downtime.enabled ? "checked" : ""}> Turn on downtime</label>
           <div class="days">${DAYS.map((d, i) => `<label><input type="checkbox" data-day="${i + 1}" ${win.days.includes(i + 1) ? "checked" : ""}><span>${d}</span></label>`).join("")}</div>
           <div class="row">
@@ -957,7 +957,7 @@ function renderGuardianStudent(studentId, student, policy, consent) {
     busy(e.submitter, async () => {
       if (!app.querySelector("#agree").checked) throw new Error("Please tick “I have read this and I agree”.");
       await api("POST", orgPath(`/students/${studentId}/consent`), { signatureName: val("#sig"), agree: true });
-      flash("Thank you — your consent is recorded.", "success");
+      flash("Thank you, your consent is recorded.", "success");
       await route();
     });
   });
@@ -980,12 +980,12 @@ function showQr(r) {
           <ol class="steps">
             <li><strong>Factory-reset</strong> the tablet: Settings → System → Reset options → Erase all data. <em>This erases everything on it.</em></li>
             <li>On the very first <strong>Welcome</strong> screen, <strong>tap the same empty spot 6 times</strong>. A QR setup message appears (connect to Wi-Fi if asked).</li>
-            <li>Scan <strong>this</strong> code with the tablet's setup scanner — not a normal camera app.</li>
+            <li>Scan <strong>this</strong> code with the tablet's setup scanner, not a normal camera app.</li>
             <li>Follow the steps. The tablet will say it belongs to your organization.</li>
             <li>Come back here: it shows <span class="badge ok">Active</span> within about 5 minutes (reload the page).</li>
           </ol>
           <div class="notice info">${icon("info")}<span>If 6 taps do nothing: continue to Google sign-in and type <code>afw#setup</code> as the email.</span></div>
-          <div class="notice">${icon("alert")}<span>Don't share this code — anyone who scans it can add a device to your organization.</span></div>
+          <div class="notice">${icon("alert")}<span>Don't share this code. Anyone who scans it can add a device to your organization.</span></div>
         </div>
       </div>
     </div>`;
@@ -1148,7 +1148,7 @@ async function startCheckout(method = "momo") {
     const popup = new window.PaystackPop();
     popup.resumeTransaction(r.accessCode, {
       onSuccess: () => { flashEl.innerHTML = ""; location.hash = `#/billing/return/${r.reference}`; },
-      onCancel: () => flash("Payment window closed. No payment was taken — you can try again any time.", "info"),
+      onCancel: () => flash("Payment window closed. No payment was taken, so you can try again any time.", "info"),
       onError: () => { location.href = r.authorizationUrl; },
     });
   } catch {
@@ -1187,7 +1187,7 @@ async function viewSubscribe() {
         ? `<div class="notice" style="background:var(--ok-bg);color:var(--ok)">${icon("check")}<span>Your plan is already active until ${h(fmtDay(billing.currentPeriodEnd))}.</span></div>
            <div class="row"><a class="button" href="#/">Go to Home</a></div>`
         : `${payButtons(billing.price)}
-           <p class="muted small" style="text-align:center;margin-top:10px">You pay in Paystack's secure window — SafeTab never sees your card or Mobile Money details.</p>
+           <p class="muted small" style="text-align:center;margin-top:10px">You pay in Paystack's secure window. SafeTab never sees your card or Mobile Money details.</p>
            ${state.org.pilotMode && locked ? `<div class="row" style="justify-content:center"><button type="button" class="secondary" data-action="pilot-activate">${icon("rocket")} Activate pilot · 30 days, no payment (this PC only)</button></div>` : ""}`}
     </section>`;
   if (!active) wirePayButtons();
@@ -1216,7 +1216,7 @@ function wirePayButtons() {
 /** Two facts a payer looks for first: until when they're covered, and how they pay. */
 function planMeta(b, hist) {
   const last = hist.payments.find((p) => p.status === "success");
-  const until = b.currentPeriodEnd ? fmtDay(b.currentPeriodEnd) : "—";
+  const until = b.currentPeriodEnd ? fmtDay(b.currentPeriodEnd) : "Not paid yet";
   const how = b.hasPaystackSubscription && b.status === "active" ? "Card · renews automatically"
     : last?.method === "momo" ? "Mobile Money · pay each month"
     : last ? "Card" : b.status === "none" ? "Not paid yet" : "Free pilot";
@@ -1245,7 +1245,7 @@ async function viewBilling() {
 
   app.innerHTML = `
     <div class="page-head"><span class="icon-tile">${icon("card")}</span>
-      <div><h1>Billing</h1><p class="muted">Your plan, payments and card — processed securely by Paystack.</p></div></div>
+      <div><h1>Billing</h1><p class="muted">Your plan, payments and card, processed securely by Paystack.</p></div></div>
 
     <div class="billing-grid">
       <section class="card plan-card">
@@ -1272,7 +1272,7 @@ async function viewBilling() {
         ${section("lock", "Secure payments")}
         <p class="muted small" style="margin-top:0">You pay on Paystack's secure checkout. SafeTab never sees or stores your card details, and every payment is confirmed directly with Paystack before your plan changes.</p>
         <ul class="plan-limits">
-          <li>${icon("check")} Mobile Money pays one month at a time — nothing is taken automatically, and we email you 3 days before it ends</li>
+          <li>${icon("check")} Mobile Money pays one month at a time. Nothing is taken automatically, and we email you 3 days before it ends</li>
           <li>${icon("check")} Card plans renew monthly; cancel any time and keep access until the end of the paid month</li>
           <li>${icon("check")} ${h(String(7))}-day grace period if a renewal fails</li>
           <li>${icon("check")} Your data is never deleted because of a missed payment</li>

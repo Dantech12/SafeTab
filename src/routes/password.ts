@@ -40,7 +40,7 @@ export async function passwordRoutes(app: FastifyInstance) {
         title: "Reset your password",
         intro: `Hi ${user.display_name}, someone (hopefully you) asked to reset the password for your ${config().BUSINESS_NAME || "SafeTab"} account. This link works once and expires in 30 minutes.`,
         button: { label: "Choose a new password", url },
-        outro: "If you didn't ask for this, you can ignore this email — your password won't change.",
+        outro: "If you didn't ask for this, you can ignore this email. Your password won't change.",
       });
       await deps.mailer.send({ to: email, subject: "Reset your password", html, text });
     })().catch((e) => req.log.error({ err: e instanceof Error ? e.message : String(e) }, "password reset email failed"));

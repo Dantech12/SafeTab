@@ -40,7 +40,7 @@ class ConsoleMailer implements Mailer {
   readonly configured = false;
   async send(e: Email) {
     if (config().NODE_ENV === "production") throw new Error("Email is not configured (SMTP_HOST is empty)");
-    console.log(`\n[safetab] EMAIL (not sent — no email service configured)\n  To: ${e.to}\n  Subject: ${e.subject}\n\n${e.text.replace(/^/gm, "  ")}\n`);
+    console.log(`\n[safetab] EMAIL (not sent, no email service configured)\n  To: ${e.to}\n  Subject: ${e.subject}\n\n${e.text.replace(/^/gm, "  ")}\n`);
   }
 }
 
@@ -80,6 +80,6 @@ ${opts.outro ? `<p style="margin:0;font-size:14px;line-height:1.6;color:#5b6b8c"
 </td></tr>
 <tr><td style="padding:16px 28px;border-top:1px solid #e1e8f5;font-size:12px;color:#5b6b8c">${brand}${support ? ` · ${esc(support)}` : ""}</td></tr>
 </table></td></tr></table></body></html>`;
-  const text = [opts.title, "", opts.intro, ...(opts.button ? ["", `${opts.button.label}: ${opts.button.url}`] : []), ...(opts.outro ? ["", opts.outro] : []), "", `— ${config().BUSINESS_NAME || "SafeTab"}`].join("\n");
+  const text = [opts.title, "", opts.intro, ...(opts.button ? ["", `${opts.button.label}: ${opts.button.url}`] : []), ...(opts.outro ? ["", opts.outro] : []), "", `The ${config().BUSINESS_NAME || "SafeTab"} team`].join("\n");
   return { html, text };
 }
