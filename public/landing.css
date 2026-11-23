@@ -130,12 +130,12 @@ svg.i { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-widt
 @media (max-width: 600px) { .features { grid-template-columns: 1fr; } }
 
 /* steps */
-.steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 20px; grid-template-columns: repeat(4, 1fr); counter-reset: s; }
+.steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 20px; grid-template-columns: repeat(3, 1fr); counter-reset: s; }
 .steps li { background: #fff; border: 1px solid var(--border); border-radius: 18px; padding: 24px; position: relative; }
 .steps .num { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: var(--blue); color: #fff; font-weight: 800; margin-bottom: 14px; }
 .steps h3 { font-size: 1.05rem; margin-bottom: 6px; }
 .steps p { color: var(--muted); font-size: .95rem; }
-@media (max-width: 900px) { .steps { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 900px) { .steps { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .steps { grid-template-columns: 1fr; } }
 
 /* privacy */

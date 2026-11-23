@@ -315,7 +315,7 @@ function authScreen(inner) {
       <p>Set app rules for school hours, see which tablets are protected, and keep parents in control.</p>
       <ul class="auth-points">
         <li>${icon("check")}<span>Apps switched off during school hours only</span></li>
-        <li>${icon("check")}<span>Parents agree before anything applies to their tablet</span></li>
+        <li>${icon("check")}<span>Every tablet shows students what is managed</span></li>
         <li>${icon("check")}<span>No messages, screens, cameras or locations, ever</span></li>
       </ul>
     </section>
