@@ -58,6 +58,15 @@ export async function confirmPayment(
   return "success";
 }
 
+const ourPlanCodes = () => new Set([config().PAYSTACK_PLAN_INDIVIDUAL, config().PAYSTACK_PLAN_ORGANIZATION]);
+
+/** Paystack sends a plan as an object with plan_code, or sometimes as the code itself. */
+function planCodeOf(plan: unknown): string | null {
+  if (typeof plan === "string") return plan || null;
+  const code = (plan as { plan_code?: unknown } | null | undefined)?.plan_code;
+  return typeof code === "string" && code ? code : null;
+}
+
 /** Returns false if the event was already processed (idempotency on the raw body hash). */
 async function firstDelivery(raw: Buffer, eventType: string): Promise<boolean> {
   const id = `paystack:${createHash("sha256").update(raw).digest("hex")}`;
@@ -76,10 +85,22 @@ export async function handlePaystackEvent(raw: Buffer, paystack: PaystackClient,
   const subCode: string | null = data.subscription_code ?? data.subscription?.subscription_code ?? null;
   const customerCode: string | null = data.customer?.customer_code ?? null;
 
+  // The Paystack account (and its single webhook) may be shared with other websites, and Paystack
+  // keeps one customer per email across all of them. So an event is ours only if it carries one of
+  // our payment references or subscription codes, or is for one of our plans. Matching on the
+  // customer alone would let another site's subscription overwrite or cancel ours.
   let orgId: string | null = null;
   if (data.reference) orgId = (await q("SELECT lookup_payment_org($1) AS id", [data.reference])).rows[0]?.id ?? null;
-  if (!orgId && (subCode || customerCode)) {
-    orgId = (await q("SELECT lookup_subscription_org($1, $2) AS id", [subCode, customerCode])).rows[0]?.id ?? null;
+  if (!orgId) {
+    let planCode = planCodeOf(data.plan) ?? planCodeOf(data.subscription?.plan);
+    if (planCode && !ourPlanCodes().has(planCode)) return; // another website's plan
+    if (subCode) orgId = (await q("SELECT lookup_subscription_org($1, NULL) AS id", [subCode])).rows[0]?.id ?? null;
+    if (!orgId && customerCode) {
+      if (!planCode && data.reference) planCode = planCodeOf((await paystack.verify(data.reference).catch(() => null))?.plan);
+      if (planCode && ourPlanCodes().has(planCode)) {
+        orgId = (await q("SELECT lookup_subscription_org(NULL, $1) AS id", [customerCode])).rows[0]?.id ?? null;
+      }
+    }
   }
   if (!orgId) return; // unknown to us; acknowledged so Paystack stops retrying
 
