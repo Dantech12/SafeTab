@@ -79,6 +79,38 @@ export async function confirmPayment(
   return "success";
 }
 
+/**
+ * The plan a webhook event is about: from the event itself, or (for a charge that names no
+ * plan) from Paystack's verify API. null when there is none, e.g. a one-off payment.
+ */
+async function eventPlan(data: any, paystack: PaystackClient): Promise<unknown> {
+  const fromEvent = [data.plan, data.subscription?.plan].find((p) => planCodeOf(p));
+  if (fromEvent) return fromEvent;
+  if (!data.reference || !data.customer?.customer_code) return null;
+  const t = await paystack.verify(data.reference).catch(() => null);
+  return planCodeOf(t?.plan) ? t!.plan : null;
+}
+
+/** Paystack sends a plan as an object with plan_code, or sometimes as the code itself. */
+function planCodeOf(plan: unknown): string | null {
+  if (typeof plan === "string") return plan || null;
+  const code = (plan as { plan_code?: unknown } | null | undefined)?.plan_code;
+  return typeof code === "string" && code ? code : null;
+}
+
+/**
+ * True for SafeTab's own plans: the codes in .env, or the plans SafeTab finds or creates by
+ * name (see plans.ts planName: "SafeTab Individual (GHS 60)", "SafeTab Organization (...)").
+ */
+export async function isSafeTabPlan(plan: unknown, paystack: PaystackClient): Promise<boolean> {
+  const code = planCodeOf(plan);
+  if (!code) return false;
+  if (code === config().PAYSTACK_PLAN_INDIVIDUAL || code === config().PAYSTACK_PLAN_ORGANIZATION) return true;
+  let name = typeof plan === "object" ? (plan as { name?: unknown }).name : undefined;
+  if (typeof name !== "string") name = (await paystack.fetchPlan(code).catch(() => null))?.name;
+  return typeof name === "string" && /^SafeTab (Individual|Organization) \(/.test(name);
+}
+
 /** Returns false if the event was already processed (idempotency on the raw body hash). */
 async function firstDelivery(raw: Buffer, eventType: string): Promise<boolean> {
   const id = `paystack:${createHash("sha256").update(raw).digest("hex")}`;
@@ -97,10 +129,19 @@ export async function handlePaystackEvent(raw: Buffer, paystack: PaystackClient,
   const subCode: string | null = data.subscription_code ?? data.subscription?.subscription_code ?? null;
   const customerCode: string | null = data.customer?.customer_code ?? null;
 
+  // The Paystack account (and its single webhook) may be shared with other websites, and Paystack
+  // keeps one customer per email across all of them. So an event is ours only if it carries one of
+  // our payment references or subscription codes, or is for one of our plans. Matching on the
+  // customer alone would let another site's subscription overwrite or cancel ours.
   let orgId: string | null = null;
   if (data.reference) orgId = (await q("SELECT lookup_payment_org($1) AS id", [data.reference])).rows[0]?.id ?? null;
-  if (!orgId && (subCode || customerCode)) {
-    orgId = (await q("SELECT lookup_subscription_org($1, $2) AS id", [subCode, customerCode])).rows[0]?.id ?? null;
+  if (!orgId) {
+    const plan = await eventPlan(data, paystack);
+    if (plan && !(await isSafeTabPlan(plan, paystack))) return; // another website's plan
+    if (subCode) orgId = (await q("SELECT lookup_subscription_org($1, NULL) AS id", [subCode])).rows[0]?.id ?? null;
+    if (!orgId && customerCode && plan) {
+      orgId = (await q("SELECT lookup_subscription_org(NULL, $1) AS id", [customerCode])).rows[0]?.id ?? null;
+    }
   }
   if (!orgId) {
     // Paid before creating an account? (pay-first checkout from the product page)

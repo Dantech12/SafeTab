@@ -56,8 +56,15 @@ describe("pay first, create the account afterwards", () => {
     expect((await status(claimToken)).json()).toMatchObject({ status: "paid", plan: "organization", email: "head@school.test" });
   });
 
+  it("ignores another website's subscription for the same payer", async () => {
+    // Same Paystack customer subscribing on another website that shares this Paystack account.
+    await hook({ event: "subscription.create", data: { subscription_code: "SUB_elsewhere", email_token: "tok_elsewhere", customer: { customer_code: "CUS_pay1" }, plan: { plan_code: "PLN_other_site", name: "BookBridge — School (monthly)" } } });
+    const row = await ownerQuery("SELECT paystack_subscription_code FROM purchases WHERE reference = $1", [reference]);
+    expect(row.rows[0].paystack_subscription_code).toBeNull();
+  });
+
   it("keeps Paystack's subscription details from the webhook until the plan is claimed", async () => {
-    await hook({ event: "subscription.create", data: { subscription_code: "SUB_pay1", email_token: "tok_pay1", customer: { customer_code: "CUS_pay1" }, next_payment_date: "2026-12-17T10:00:00.000Z" } });
+    await hook({ event: "subscription.create", data: { subscription_code: "SUB_pay1", email_token: "tok_pay1", customer: { customer_code: "CUS_pay1" }, plan: { plan_code: "PLN_test_organization" }, next_payment_date: "2026-12-17T10:00:00.000Z" } });
     const row = await ownerQuery("SELECT paystack_subscription_code FROM purchases WHERE reference = $1", [reference]);
     expect(row.rows[0].paystack_subscription_code).toBe("SUB_pay1");
   });
