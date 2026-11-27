@@ -100,7 +100,7 @@ describe("checkout and verification", () => {
   });
 
   it("stores subscription codes from subscription.create", async () => {
-    await hook({ event: "subscription.create", data: { subscription_code: "SUB_test1", email_token: "tok_test1", customer: { customer_code: "CUS_test1" }, next_payment_date: new Date(Date.now() + 30 * 86400_000).toISOString() } });
+    await hook({ event: "subscription.create", data: { subscription_code: "SUB_test1", email_token: "tok_test1", customer: { customer_code: "CUS_test1" }, plan: { plan_code: "PLN_test_individual" }, next_payment_date: new Date(Date.now() + 30 * 86400_000).toISOString() } });
     const s = await ownerQuery("SELECT paystack_subscription_code, paystack_email_token FROM subscriptions WHERE org_id = $1", [fam.orgId]);
     expect(s.rows[0]).toEqual({ paystack_subscription_code: "SUB_test1", paystack_email_token: "tok_test1" });
   });
@@ -160,5 +160,48 @@ describe("renewal failure, grace and read-only", () => {
     const r = await hook({ event: "charge.success", data: { reference: "st_unknown" } });
     expect(r.statusCode).toBe(200);
     expect((await billing(school)).status).toBe("none");
+  });
+});
+
+describe("Paystack account shared with another website", () => {
+  // The same payer (same Paystack customer) also subscribes on another website that uses
+  // this Paystack account. Those events reach this webhook too and must change nothing here.
+  const other = { plan: { plan_code: "PLN_other_site" }, customer: { customer_code: "CUS_test1" } };
+  const sub = async () => (await ownerQuery(
+    "SELECT status, paystack_subscription_code, paystack_email_token, current_period_end FROM subscriptions WHERE org_id = $1", [fam.orgId])).rows[0];
+  let before: any;
+
+  beforeAll(async () => {
+    await ownerQuery("UPDATE subscriptions SET status = 'active', current_period_end = now() + interval '5 days', grace_until = NULL WHERE org_id = $1", [fam.orgId]);
+    before = await sub();
+  });
+
+  it("does not take over the other website's subscription or its failures and cancellations", async () => {
+    for (const evt of [
+      { event: "subscription.create", data: { ...other, subscription_code: "SUB_other", email_token: "tok_other" } },
+      { event: "invoice.payment_failed", data: { ...other, subscription: { subscription_code: "SUB_other", plan: other.plan } } },
+      { event: "subscription.not_renew", data: { ...other, subscription_code: "SUB_other" } },
+      { event: "subscription.disable", data: { ...other, subscription_code: "SUB_other" } },
+    ]) {
+      expect((await hook(evt)).statusCode).toBe(200);
+    }
+    expect(await sub()).toEqual(before);
+  });
+
+  it("does not count the other website's payments, even when the event names no plan", async () => {
+    t.paystack.transactions.set("elib_abc", { status: "success", reference: "elib_abc", amount: 500, currency: "USD", plan: { plan_code: "PLN_other_site" }, customer: { customer_code: "CUS_test1" } });
+    t.paystack.transactions.set("other_once", { status: "success", reference: "other_once", amount: 500, currency: "USD", plan: {}, customer: { customer_code: "CUS_test1" } });
+    expect((await hook({ event: "charge.success", data: { reference: "elib_abc", customer: { customer_code: "CUS_test1" } } })).statusCode).toBe(200);
+    expect((await hook({ event: "charge.success", data: { reference: "other_once", customer: { customer_code: "CUS_test1" }, plan: {} } })).statusCode).toBe(200);
+    expect(await sub()).toEqual(before);
+  });
+
+  it("still records its own renewals and failures", async () => {
+    t.paystack.transactions.set("renew_1", { status: "success", reference: "renew_1", amount: 500, currency: "USD", plan: { plan_code: "PLN_test_individual" }, customer: { customer_code: "CUS_test1" } });
+    await hook({ event: "charge.success", data: { reference: "renew_1", customer: { customer_code: "CUS_test1" } } }); // plan looked up via the API
+    expect((await sub()).current_period_end.getTime()).toBeGreaterThan(before.current_period_end.getTime());
+
+    await hook({ event: "invoice.payment_failed", data: { subscription: { subscription_code: "SUB_test1" }, customer: { customer_code: "CUS_test1" } } });
+    expect((await sub()).status).toBe("past_due");
   });
 });

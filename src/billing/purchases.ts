@@ -7,7 +7,7 @@ import { hashToken, newToken } from "../lib/tokens.js";
 import type { Plan } from "./entitlements.js";
 import { PaystackRejectedError, type PaystackClient } from "./paystack.js";
 import { resolvePlanCode } from "./plans.js";
-import { checkoutOptions, planPricing, type PayMethod } from "./service.js";
+import { checkoutOptions, isSafeTabPlan, planPricing, type PayMethod } from "./service.js";
 
 /**
  * Pay first, create the account afterwards.
@@ -78,7 +78,9 @@ export async function handlePurchaseEvent(event: string, data: any, paystack: Pa
     const known = (await q("SELECT 1 FROM purchases WHERE reference = $1", [data.reference])).rowCount;
     if (known) { await confirmPurchase(paystack, data.reference); return true; }
   }
-  if (event === "subscription.create" && data.customer?.customer_code) {
+  // Only SafeTab's own plans: the same customer may also subscribe on another website that
+  // shares this Paystack account.
+  if (event === "subscription.create" && data.customer?.customer_code && (await isSafeTabPlan(data.plan, paystack))) {
     // Keep the subscription details so cancel / card updates work once claimed.
     const r = await q(
       `UPDATE purchases SET paystack_subscription_code = $2, paystack_email_token = $3, next_payment_date = $4::timestamptz
